@@ -2,6 +2,7 @@ import React, { forwardRef, useImperativeHandle, useRef, useEffect, useState } f
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
+import { READER_THEMES } from '../theme';
 
 export interface EpubReaderHandle {
   nextPage: () => void;
@@ -19,18 +20,14 @@ interface Props {
   onTap: () => void;
 }
 
-import { READER_THEMES } from '../theme';
-
-const THEME_COLORS = READER_THEMES;
-
 function generateHtml(
-  base64: string,
+  bookFileUri: string,
   lastCfi: string | undefined,
   fontSize: number,
   lineHeight: number,
   theme: 'dark' | 'sepia' | 'light'
 ): string {
-  const colors = THEME_COLORS[theme];
+  const colors = READER_THEMES[theme];
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -40,9 +37,12 @@ function generateHtml(
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: ${colors.bg}; }
     #viewer { width: 100%; height: 100%; }
+    #status { color: ${colors.fg}; font-family: sans-serif; font-size: 14px;
+              position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
   </style>
 </head>
 <body>
+  <div id="status">Loading EPUB...</div>
   <div id="viewer"></div>
   <script>
     var currentFontSize = ${fontSize};
@@ -50,89 +50,92 @@ function generateHtml(
     var themeBg = '${colors.bg}';
     var themeFg = '${colors.fg}';
 
-    function b64ToUint8(b64) {
-      var bin = atob(b64);
-      var arr = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      return arr.buffer;
-    }
+    // Fetch the EPUB file as ArrayBuffer
+    fetch('${bookFileUri}')
+      .then(function(r) { return r.arrayBuffer(); })
+      .then(function(data) {
+        document.getElementById('status').style.display = 'none';
 
-    var book = ePub(b64ToUint8('${base64}'));
-    var rendition = book.renderTo('viewer', {
-      flow: 'paginated',
-      spread: 'none',
-      width: '100%',
-      height: '100%'
-    });
+        var book = ePub(data);
+        var rendition = book.renderTo('viewer', {
+          flow: 'paginated',
+          spread: 'none',
+          width: '100%',
+          height: '100%'
+        });
 
-    function applyTheme() {
-      rendition.themes.default({
-        body: {
-          background: themeBg + ' !important',
-          color: themeFg + ' !important',
-          'font-size': currentFontSize + 'px !important',
-          'line-height': currentLineHeight + ' !important'
-        },
-        p: { 'font-size': currentFontSize + 'px !important' },
-        span: { 'font-size': 'inherit !important' },
-        div: { 'font-size': currentFontSize + 'px !important' }
-      });
-    }
-
-    applyTheme();
-
-    var lastCfi = ${lastCfi ? `'${lastCfi}'` : 'null'};
-    if (lastCfi) {
-      rendition.display(lastCfi);
-    } else {
-      rendition.display();
-    }
-
-    var totalPages = 0;
-    book.ready.then(function() {
-      return book.locations.generate(1600);
-    }).then(function(locations) {
-      totalPages = locations.length;
-    });
-
-    rendition.on('relocated', function(location) {
-      var page = 0;
-      if (location.start && location.start.location !== undefined) {
-        page = location.start.location;
-      }
-      var cfi = location.start ? location.start.cfi : '';
-      var total = totalPages || 1;
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'locationChange',
-        cfi: cfi,
-        page: page,
-        total: total
-      }));
-    });
-
-    rendition.on('click', function(e) {
-      var width = window.innerWidth;
-      var x = e.clientX;
-      if (x < width * 0.25) {
-        rendition.prev();
-      } else if (x > width * 0.75) {
-        rendition.next();
-      } else {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tap' }));
-      }
-    });
-
-    window.addEventListener('message', function(e) {
-      try {
-        var msg = JSON.parse(e.data);
-        if (msg.type === 'next') rendition.next();
-        if (msg.type === 'prev') rendition.prev();
-        if (msg.type === 'fontSize') {
-          currentFontSize = msg.size;
-          applyTheme();
+        function applyTheme() {
+          rendition.themes.default({
+            body: {
+              background: themeBg + ' !important',
+              color: themeFg + ' !important',
+              'font-size': currentFontSize + 'px !important',
+              'line-height': currentLineHeight + ' !important'
+            },
+            p: { 'font-size': currentFontSize + 'px !important' },
+            span: { 'font-size': 'inherit !important' },
+            div: { 'font-size': currentFontSize + 'px !important' }
+          });
         }
-      } catch(err) {}
-    });
+
+        applyTheme();
+
+        var lastCfi = ${lastCfi ? `'${lastCfi}'` : 'null'};
+        if (lastCfi) {
+          rendition.display(lastCfi);
+        } else {
+          rendition.display();
+        }
+
+        var totalPages = 0;
+        book.ready.then(function() {
+          return book.locations.generate(1600);
+        }).then(function(locations) {
+          totalPages = locations.length;
+        });
+
+        rendition.on('relocated', function(location) {
+          var page = 0;
+          if (location.start && location.start.location !== undefined) {
+            page = location.start.location;
+          }
+          var cfi = location.start ? location.start.cfi : '';
+          var total = totalPages || 1;
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'locationChange', cfi: cfi, page: page, total: total
+          }));
+        });
+
+        rendition.on('click', function(e) {
+          var width = window.innerWidth;
+          var x = e.clientX;
+          if (x < width * 0.25) {
+            rendition.prev();
+          } else if (x > width * 0.75) {
+            rendition.next();
+          } else {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tap' }));
+          }
+        });
+
+        window.addEventListener('message', function(e) {
+          try {
+            var msg = JSON.parse(e.data);
+            if (msg.type === 'next') rendition.next();
+            if (msg.type === 'prev') rendition.prev();
+            if (msg.type === 'fontSize') {
+              currentFontSize = msg.size;
+              applyTheme();
+            }
+          } catch(err) {}
+        });
+      })
+      .catch(function(err) {
+        document.getElementById('status').textContent = 'Error: ' + (err.message || err);
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'error', message: err.message || 'EPUB load error'
+        }));
+      });
   </script>
 </body>
 </html>`;
@@ -141,7 +144,7 @@ function generateHtml(
 export const EpubReader = forwardRef<EpubReaderHandle, Props>(
   ({ uri, lastCfi, fontSize, lineHeight, theme, onLocationChange, onTap }, ref) => {
     const webViewRef = useRef<WebView>(null);
-    const [html, setHtml] = useState<string | null>(null);
+    const [htmlUri, setHtmlUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const prevFontSize = useRef(fontSize);
 
@@ -175,17 +178,15 @@ export const EpubReader = forwardRef<EpubReaderHandle, Props>(
     useEffect(() => {
       (async () => {
         try {
-          const base64 = await FileSystem.readAsStringAsync(uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const page = generateHtml(base64, lastCfi, fontSize, lineHeight, theme);
-          setHtml(page);
+          const bookFileUri = uri.startsWith('file://') ? uri : 'file://' + uri;
+          const html = generateHtml(bookFileUri, lastCfi, fontSize, lineHeight, theme);
+          const htmlPath = FileSystem.cacheDirectory + 'epub_viewer.html';
+          await FileSystem.writeAsStringAsync(htmlPath, html);
+          setHtmlUri(htmlPath);
         } catch (err) {
-          console.error('Failed to load EPUB:', err);
+          console.error('Failed to prepare EPUB viewer:', err);
         }
       })();
-      // Only load once on mount
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleMessage = (event: { nativeEvent: { data: string } }) => {
@@ -199,7 +200,7 @@ export const EpubReader = forwardRef<EpubReaderHandle, Props>(
       } catch {}
     };
 
-    if (!html) {
+    if (!htmlUri) {
       return (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color="#1a1a1a" />
@@ -216,11 +217,13 @@ export const EpubReader = forwardRef<EpubReaderHandle, Props>(
         )}
         <WebView
           ref={webViewRef}
-          source={{ html, baseUrl: '' }}
+          source={{ uri: htmlUri }}
           originWhitelist={['*']}
           allowFileAccess
+          allowFileAccessFromFileURLs
           allowUniversalAccessFromFileURLs
           javaScriptEnabled
+          mixedContentMode="always"
           scrollEnabled={false}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}

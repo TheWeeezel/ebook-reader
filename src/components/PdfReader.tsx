@@ -2,6 +2,7 @@ import React, { forwardRef, useImperativeHandle, useRef, useEffect, useState } f
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
+import { READER_THEMES } from '../theme';
 
 export interface PdfReaderHandle {
   nextPage: () => void;
@@ -17,12 +18,8 @@ interface Props {
   onTap: () => void;
 }
 
-import { READER_THEMES } from '../theme';
-
-const THEME_COLORS = READER_THEMES;
-
-function generateHtml(base64: string, initialPage: number, theme: 'dark' | 'sepia' | 'light'): string {
-  const colors = THEME_COLORS[theme];
+function generateHtml(bookFileUri: string, initialPage: number, theme: 'dark' | 'sepia' | 'light'): string {
+  const colors = READER_THEMES[theme];
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -35,16 +32,13 @@ function generateHtml(base64: string, initialPage: number, theme: 'dark' | 'sepi
       background: ${colors.bg};
       display: flex; justify-content: center; align-items: center;
     }
-    canvas {
-      display: block;
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-    }
+    canvas { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+    #status { color: ${colors.fg}; font-family: sans-serif; font-size: 14px; position: absolute; }
   </style>
 </head>
 <body>
-  <canvas id="pdfCanvas"></canvas>
+  <div id="status">Loading PDF...</div>
+  <canvas id="pdfCanvas" style="display:none"></canvas>
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
@@ -53,13 +47,6 @@ function generateHtml(base64: string, initialPage: number, theme: 'dark' | 'sepi
     var totalPages = 0;
     var rendering = false;
     var pendingPage = null;
-
-    function b64ToUint8(b64) {
-      var bin = atob(b64);
-      var arr = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      return arr;
-    }
 
     function renderPage(num) {
       if (rendering) { pendingPage = num; return; }
@@ -91,17 +78,26 @@ function generateHtml(base64: string, initialPage: number, theme: 'dark' | 'sepi
       }));
     }
 
-    var data = b64ToUint8('${base64}');
-    pdfjsLib.getDocument({ data: data }).promise.then(function(pdf) {
-      pdfDoc = pdf;
-      totalPages = pdf.numPages;
-      if (currentPage > totalPages) currentPage = 1;
-      renderPage(currentPage);
-    }).catch(function(err) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'error', message: err.message || 'PDF load error'
-      }));
-    });
+    // Load PDF from file URI
+    fetch('${bookFileUri}')
+      .then(function(r) { return r.arrayBuffer(); })
+      .then(function(data) {
+        return pdfjsLib.getDocument({ data: data }).promise;
+      })
+      .then(function(pdf) {
+        pdfDoc = pdf;
+        totalPages = pdf.numPages;
+        if (currentPage > totalPages) currentPage = 1;
+        document.getElementById('status').style.display = 'none';
+        document.getElementById('pdfCanvas').style.display = 'block';
+        renderPage(currentPage);
+      })
+      .catch(function(err) {
+        document.getElementById('status').textContent = 'Error: ' + (err.message || err);
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'error', message: err.message || 'PDF load error'
+        }));
+      });
 
     document.body.addEventListener('click', function(e) {
       var w = window.innerWidth;
@@ -118,15 +114,9 @@ function generateHtml(base64: string, initialPage: number, theme: 'dark' | 'sepi
     window.addEventListener('message', function(e) {
       try {
         var msg = JSON.parse(e.data);
-        if (msg.type === 'next' && currentPage < totalPages) {
-          currentPage++; renderPage(currentPage);
-        }
-        if (msg.type === 'prev' && currentPage > 1) {
-          currentPage--; renderPage(currentPage);
-        }
-        if (msg.type === 'goToPage' && msg.page >= 1 && msg.page <= totalPages) {
-          currentPage = msg.page; renderPage(currentPage);
-        }
+        if (msg.type === 'next' && currentPage < totalPages) { currentPage++; renderPage(currentPage); }
+        if (msg.type === 'prev' && currentPage > 1) { currentPage--; renderPage(currentPage); }
+        if (msg.type === 'goToPage' && msg.page >= 1 && msg.page <= totalPages) { currentPage = msg.page; renderPage(currentPage); }
       } catch(err) {}
     });
   </script>
@@ -137,7 +127,7 @@ function generateHtml(base64: string, initialPage: number, theme: 'dark' | 'sepi
 export const PdfReader = forwardRef<PdfReaderHandle, Props>(
   ({ uri, initialPage, theme, onPageChange, onTap }, ref) => {
     const webViewRef = useRef<WebView>(null);
-    const [html, setHtml] = useState<string | null>(null);
+    const [htmlUri, setHtmlUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     useImperativeHandle(ref, () => ({
@@ -161,13 +151,13 @@ export const PdfReader = forwardRef<PdfReaderHandle, Props>(
     useEffect(() => {
       (async () => {
         try {
-          const base64 = await FileSystem.readAsStringAsync(uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const page = generateHtml(base64, initialPage, theme);
-          setHtml(page);
+          const bookFileUri = uri.startsWith('file://') ? uri : 'file://' + uri;
+          const html = generateHtml(bookFileUri, initialPage, theme);
+          const htmlPath = FileSystem.cacheDirectory + 'pdf_viewer.html';
+          await FileSystem.writeAsStringAsync(htmlPath, html);
+          setHtmlUri(htmlPath);
         } catch (err) {
-          console.error('Failed to load PDF:', err);
+          console.error('Failed to prepare PDF viewer:', err);
         }
       })();
     }, []);
@@ -183,7 +173,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, Props>(
       } catch {}
     };
 
-    if (!html) {
+    if (!htmlUri) {
       return (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color="#1a1a1a" />
@@ -200,11 +190,13 @@ export const PdfReader = forwardRef<PdfReaderHandle, Props>(
         )}
         <WebView
           ref={webViewRef}
-          source={{ html, baseUrl: '' }}
+          source={{ uri: htmlUri }}
           originWhitelist={['*']}
           allowFileAccess
+          allowFileAccessFromFileURLs
           allowUniversalAccessFromFileURLs
           javaScriptEnabled
+          mixedContentMode="always"
           scrollEnabled={false}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
