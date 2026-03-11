@@ -12,6 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore, KeyBinding } from '../store/appStore';
+import { colors } from '../theme';
 
 const ACTIONS = [
   { value: 'nextPage', label: 'Nächste Seite' },
@@ -59,16 +60,15 @@ export function SettingsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color="#e8d5b5" />
+          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Einstellungen</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Appearance */}
         <Text style={styles.sectionTitle}>Darstellung</Text>
         <View style={styles.card}>
-          <Text style={styles.label}>Thema</Text>
+          <Text style={styles.label}>Lese-Thema</Text>
           <View style={styles.themeRow}>
             {THEMES.map((t) => (
               <TouchableOpacity
@@ -99,7 +99,7 @@ export function SettingsScreen() {
               style={styles.fontBtn}
               onPress={() => updateSettings({ fontSize: Math.max(12, settings.fontSize - 2) })}
             >
-              <Text style={styles.fontBtnText}>A−</Text>
+              <Text style={styles.fontBtnText}>A-</Text>
             </TouchableOpacity>
             <View style={styles.fontSizeDisplay}>
               <Text style={styles.fontSizeValue}>{settings.fontSize}px</Text>
@@ -122,13 +122,12 @@ export function SettingsScreen() {
             <Switch
               value={settings.keepScreenAwake}
               onValueChange={(val) => updateSettings({ keepScreenAwake: val })}
-              trackColor={{ false: '#2d2720', true: '#c9a96e' }}
-              thumbColor="#e8d5b5"
+              trackColor={{ false: colors.switchTrackOff, true: colors.switchTrackOn }}
+              thumbColor={colors.switchThumb}
             />
           </View>
         </View>
 
-        {/* Key Bindings */}
         <Text style={styles.sectionTitle}>Tastenbelegung</Text>
         <Text style={styles.sectionHint}>
           Tippe auf eine Taste um sie zu ändern. Ideal für das physische Keyboard des Minimal Phone.
@@ -144,7 +143,7 @@ export function SettingsScreen() {
                 >
                   <Text style={styles.keyChipText}>{binding.label}</Text>
                 </TouchableOpacity>
-                <Ionicons name="arrow-forward" size={14} color="#4d4038" style={{ marginHorizontal: 8 }} />
+                <Ionicons name="arrow-forward" size={14} color={colors.textVeryDim} style={{ marginHorizontal: 8 }} />
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -180,7 +179,6 @@ export function SettingsScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Key Capture Modal */}
       <Modal visible={captureIndex !== null} transparent animationType="fade">
         <View style={styles.captureOverlay}>
           <View style={styles.captureCard}>
@@ -231,7 +229,7 @@ export function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0e0c' },
+  container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -240,73 +238,69 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   backBtn: { padding: 8, marginRight: 8 },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#e8d5b5' },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
   content: { padding: 16 },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#c9a96e',
+    color: colors.textPrimary,
     marginTop: 20,
     marginBottom: 8,
   },
-  sectionHint: { fontSize: 13, color: '#6b5e4e', marginBottom: 10, lineHeight: 18 },
+  sectionHint: { fontSize: 13, color: colors.textDim, marginBottom: 10, lineHeight: 18 },
   card: {
-    backgroundColor: '#1a1714',
+    backgroundColor: colors.card,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
-  label: { fontSize: 14, fontWeight: '600', color: '#e8d5b5', marginBottom: 8 },
-  hint: { fontSize: 12, color: '#6b5e4e', marginTop: -4 },
-  separator: { height: 1, backgroundColor: '#2d2720', marginVertical: 14 },
+  label: { fontSize: 14, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
+  hint: { fontSize: 12, color: colors.textDim, marginTop: -4 },
+  separator: { height: 1, backgroundColor: colors.border, marginVertical: 14 },
 
-  // Theme
   themeRow: { flexDirection: 'row', gap: 8 },
   themeBtn: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: '#0f0e0c',
+    backgroundColor: colors.bg,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
-  themeBtnActive: { borderColor: '#c9a96e' },
-  themeBtnText: { fontSize: 13, color: '#6b5e4e', fontWeight: '600' },
-  themeBtnTextActive: { color: '#c9a96e' },
+  themeBtnActive: { borderColor: colors.textPrimary, borderWidth: 2 },
+  themeBtnText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
+  themeBtnTextActive: { color: colors.textPrimary },
 
-  // Font size
   fontSizeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   fontBtn: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#0f0e0c',
+    backgroundColor: colors.bg,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
-  fontBtnText: { fontSize: 15, color: '#c9b89a', fontWeight: '600' },
+  fontBtnText: { fontSize: 15, color: colors.textSecondary, fontWeight: '600' },
   fontSizeDisplay: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 10,
-    backgroundColor: '#0f0e0c',
+    backgroundColor: colors.bg,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
-  fontSizeValue: { fontSize: 16, color: '#e8d5b5', fontWeight: '700' },
+  fontSizeValue: { fontSize: 16, color: colors.textPrimary, fontWeight: '700' },
 
-  // Switch
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
 
-  // Key Bindings
   bindingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -316,51 +310,49 @@ const styles = StyleSheet.create({
     height: 36,
     paddingHorizontal: 12,
     borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#c9a96e',
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(201,169,110,0.08)',
   },
-  keyChipText: { fontSize: 14, fontWeight: '700', color: '#c9a96e' },
+  keyChipText: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   actionChips: { gap: 6 },
   actionChip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#0f0e0c',
+    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
   actionChipActive: {
-    backgroundColor: 'rgba(201,169,110,0.15)',
-    borderColor: '#c9a96e',
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
   },
-  actionChipText: { fontSize: 12, color: '#6b5e4e' },
-  actionChipTextActive: { color: '#c9a96e', fontWeight: '600' },
+  actionChipText: { fontSize: 12, color: colors.textDim },
+  actionChipTextActive: { color: colors.bg, fontWeight: '600' },
 
-  // Capture Modal
   captureOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
   },
   captureCard: {
-    backgroundColor: '#1a1714',
+    backgroundColor: colors.bg,
     borderRadius: 20,
     padding: 24,
     width: '100%',
     maxWidth: 300,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
-  captureTitle: { fontSize: 20, fontWeight: '700', color: '#e8d5b5' },
+  captureTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
   captureHint: {
     fontSize: 13,
-    color: '#6b5e4e',
+    color: colors.textDim,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 18,
@@ -378,7 +370,7 @@ const styles = StyleSheet.create({
   capturedKeyDisplay: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#c9a96e',
+    color: colors.textPrimary,
     minWidth: 60,
     textAlign: 'center',
   },
@@ -387,17 +379,19 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: '#2d2720',
+    backgroundColor: colors.elevated,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  captureCancelText: { fontSize: 14, color: '#c9b89a', fontWeight: '600' },
+  captureCancelText: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
   captureConfirmBtn: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: '#c9a96e',
+    backgroundColor: colors.textPrimary,
     alignItems: 'center',
   },
-  captureConfirmBtnDisabled: { opacity: 0.4 },
-  captureConfirmText: { fontSize: 14, color: '#0f0e0c', fontWeight: '700' },
+  captureConfirmBtnDisabled: { opacity: 0.3 },
+  captureConfirmText: { fontSize: 14, color: colors.bg, fontWeight: '700' },
 });

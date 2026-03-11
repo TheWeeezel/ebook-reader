@@ -5,15 +5,15 @@
     "version": "1.0.0",
     "scheme": "pageturner",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#0f0e0c"
+      "backgroundColor": "#ffffff"
     },
     "android": {
       "package": "com.pageturner.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0f0e0c"
+        "backgroundColor": "#ffffff"
       },
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",

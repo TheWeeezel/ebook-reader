@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ACCENT_COLORS } from '../theme';
 
 export type BookType = 'pdf' | 'epub' | 'txt';
 
@@ -38,10 +39,7 @@ export interface Settings {
   keepScreenAwake: boolean;
 }
 
-const ACCENT_COLORS = [
-  '#c9a96e', '#7eb8c9', '#a9c97e', '#c97e9e',
-  '#9e7ec9', '#c9b07e', '#7ec9b8', '#c98a7e',
-];
+// ACCENT_COLORS imported from theme.ts
 
 const DEFAULT_KEY_BINDINGS: KeyBinding[] = [
   { key: 'n', action: 'nextPage', label: 'n' },
@@ -53,7 +51,7 @@ const DEFAULT_KEY_BINDINGS: KeyBinding[] = [
 
 const DEFAULT_SETTINGS: Settings = {
   fontSize: 18,
-  theme: 'dark',
+  theme: 'light',
   lineHeight: 1.7,
   keyBindings: DEFAULT_KEY_BINDINGS,
   keepScreenAwake: true,

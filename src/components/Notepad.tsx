@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore, Note } from '../store/appStore';
+import { colors } from '../theme';
 
 interface Props {
   visible: boolean;
@@ -84,10 +85,10 @@ export function Notepad({ visible, onClose, bookId, bookTitle, currentPage, curr
             onChangeText={setEditText}
             multiline
             autoFocus
-            placeholderTextColor="#6b5e4e"
+            placeholderTextColor={colors.textDim}
           />
           <TouchableOpacity onPress={handleSaveEdit} style={styles.saveBtn}>
-            <Ionicons name="checkmark" size={18} color="#c9a96e" />
+            <Ionicons name="checkmark" size={18} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
       ) : (
@@ -101,7 +102,7 @@ export function Notepad({ visible, onClose, bookId, bookTitle, currentPage, curr
         )}
         <Text style={styles.noteMetaText}>{formatDate(item.createdAt)}</Text>
         <TouchableOpacity onPress={() => handleDelete(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="trash-outline" size={16} color="#6b5e4e" />
+          <Ionicons name="trash-outline" size={16} color={colors.textDim} />
         </TouchableOpacity>
       </View>
     </View>
@@ -129,7 +130,7 @@ export function Notepad({ visible, onClose, bookId, bookTitle, currentPage, curr
                 </View>
               )}
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={24} color="#e8d5b5" />
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
           </View>
@@ -139,7 +140,7 @@ export function Notepad({ visible, onClose, bookId, bookTitle, currentPage, curr
               ref={inputRef}
               style={styles.input}
               placeholder="Notiz hinzufügen..."
-              placeholderTextColor="#6b5e4e"
+              placeholderTextColor={colors.textDim}
               value={text}
               onChangeText={setText}
               multiline
@@ -150,7 +151,7 @@ export function Notepad({ visible, onClose, bookId, bookTitle, currentPage, curr
               style={[styles.addBtn, !text.trim() && styles.addBtnDisabled]}
               disabled={!text.trim()}
             >
-              <Ionicons name="add" size={22} color={text.trim() ? '#0f0e0c' : '#6b5e4e'} />
+              <Ionicons name="add" size={22} color={text.trim() ? colors.bg : colors.textDim} />
             </TouchableOpacity>
           </View>
 
@@ -161,7 +162,7 @@ export function Notepad({ visible, onClose, bookId, bookTitle, currentPage, curr
             contentContainerStyle={styles.list}
             ListEmptyComponent={
               <View style={styles.empty}>
-                <Ionicons name="document-text-outline" size={32} color="#4d4038" />
+                <Ionicons name="document-text-outline" size={32} color={colors.textVeryDim} />
                 <Text style={styles.emptyText}>Noch keine Notizen</Text>
               </View>
             }
@@ -175,21 +176,23 @@ export function Notepad({ visible, onClose, bookId, bookTitle, currentPage, curr
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   sheet: {
     height: '75%',
-    backgroundColor: '#1a1714',
+    backgroundColor: colors.bg,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 16,
     paddingTop: 8,
+    borderTopWidth: 1,
+    borderColor: colors.border,
   },
   handle: {
     width: 40,
     height: 4,
-    backgroundColor: '#3d3328',
+    backgroundColor: colors.border,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 12,
@@ -201,16 +204,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   headerLeft: { flex: 1 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#e8d5b5' },
-  headerSubtitle: { fontSize: 13, color: '#6b5e4e', marginTop: 2 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  headerSubtitle: { fontSize: 13, color: colors.textDim, marginTop: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   pageBadge: {
-    backgroundColor: 'rgba(201,169,110,0.15)',
+    backgroundColor: colors.elevated,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  pageBadgeText: { fontSize: 12, color: '#c9a96e', fontWeight: '600' },
+  pageBadgeText: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -219,35 +224,35 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: '#0f0e0c',
+    backgroundColor: colors.card,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#e8d5b5',
+    color: colors.textPrimary,
     fontSize: 15,
     maxHeight: 80,
     borderWidth: 1,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
   addBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#c9a96e',
+    backgroundColor: colors.textPrimary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  addBtnDisabled: { backgroundColor: '#2d2720' },
+  addBtnDisabled: { backgroundColor: colors.elevated },
   list: { paddingBottom: 20 },
   noteCard: {
-    backgroundColor: '#0f0e0c',
+    backgroundColor: colors.card,
     borderRadius: 10,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
-  noteText: { color: '#e8d5b5', fontSize: 14, lineHeight: 20 },
+  noteText: { color: colors.textPrimary, fontSize: 14, lineHeight: 20 },
   noteMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -255,17 +260,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
     gap: 8,
   },
-  noteMetaText: { fontSize: 12, color: '#6b5e4e' },
+  noteMetaText: { fontSize: 12, color: colors.textDim },
   editContainer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   editInput: {
     flex: 1,
-    color: '#e8d5b5',
+    color: colors.textPrimary,
     fontSize: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#c9a96e',
+    borderBottomColor: colors.textPrimary,
     paddingVertical: 4,
   },
   saveBtn: { padding: 4 },
   empty: { alignItems: 'center', paddingTop: 40 },
-  emptyText: { color: '#6b5e4e', fontSize: 14, marginTop: 8 },
+  emptyText: { color: colors.textDim, fontSize: 14, marginTop: 8 },
 });

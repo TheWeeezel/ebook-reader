@@ -3,19 +3,17 @@ import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
 
-export interface EpubReaderHandle {
+export interface PdfReaderHandle {
   nextPage: () => void;
   prevPage: () => void;
-  setFontSize: (size: number) => void;
+  goToPage: (page: number) => void;
 }
 
 interface Props {
   uri: string;
-  lastCfi?: string;
-  fontSize: number;
-  lineHeight: number;
+  initialPage: number;
   theme: 'dark' | 'sepia' | 'light';
-  onLocationChange: (cfi: string, page: number, total: number) => void;
+  onPageChange: (page: number, total: number) => void;
   onTap: () => void;
 }
 
@@ -23,100 +21,95 @@ import { READER_THEMES } from '../theme';
 
 const THEME_COLORS = READER_THEMES;
 
-function generateHtml(
-  base64: string,
-  lastCfi: string | undefined,
-  fontSize: number,
-  lineHeight: number,
-  theme: 'dark' | 'sepia' | 'light'
-): string {
+function generateHtml(base64: string, initialPage: number, theme: 'dark' | 'sepia' | 'light'): string {
   const colors = THEME_COLORS[theme];
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-  <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: ${colors.bg}; }
-    #viewer { width: 100%; height: 100%; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: ${colors.bg};
+      display: flex; justify-content: center; align-items: center;
+    }
+    canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
   </style>
 </head>
 <body>
-  <div id="viewer"></div>
+  <canvas id="pdfCanvas"></canvas>
   <script>
-    var currentFontSize = ${fontSize};
-    var currentLineHeight = ${lineHeight};
-    var themeBg = '${colors.bg}';
-    var themeFg = '${colors.fg}';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+    var pdfDoc = null;
+    var currentPage = ${initialPage + 1};
+    var totalPages = 0;
+    var rendering = false;
+    var pendingPage = null;
 
     function b64ToUint8(b64) {
       var bin = atob(b64);
       var arr = new Uint8Array(bin.length);
       for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      return arr.buffer;
+      return arr;
     }
 
-    var book = ePub(b64ToUint8('${base64}'));
-    var rendition = book.renderTo('viewer', {
-      flow: 'paginated',
-      spread: 'none',
-      width: '100%',
-      height: '100%'
-    });
-
-    function applyTheme() {
-      rendition.themes.default({
-        body: {
-          background: themeBg + ' !important',
-          color: themeFg + ' !important',
-          'font-size': currentFontSize + 'px !important',
-          'line-height': currentLineHeight + ' !important'
-        },
-        p: { 'font-size': currentFontSize + 'px !important' },
-        span: { 'font-size': 'inherit !important' },
-        div: { 'font-size': currentFontSize + 'px !important' }
+    function renderPage(num) {
+      if (rendering) { pendingPage = num; return; }
+      rendering = true;
+      pdfDoc.getPage(num).then(function(page) {
+        var canvas = document.getElementById('pdfCanvas');
+        var ctx = canvas.getContext('2d');
+        var vw = window.innerWidth;
+        var vh = window.innerHeight;
+        var unscaledViewport = page.getViewport({ scale: 1 });
+        var scale = Math.min(vw / unscaledViewport.width, vh / unscaledViewport.height);
+        var dpr = window.devicePixelRatio || 1;
+        var viewport = page.getViewport({ scale: scale * dpr });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = (viewport.width / dpr) + 'px';
+        canvas.style.height = (viewport.height / dpr) + 'px';
+        page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function() {
+          rendering = false;
+          if (pendingPage !== null) {
+            var p = pendingPage;
+            pendingPage = null;
+            renderPage(p);
+          }
+        });
       });
-    }
-
-    applyTheme();
-
-    var lastCfi = ${lastCfi ? `'${lastCfi}'` : 'null'};
-    if (lastCfi) {
-      rendition.display(lastCfi);
-    } else {
-      rendition.display();
-    }
-
-    var totalPages = 0;
-    book.ready.then(function() {
-      return book.locations.generate(1600);
-    }).then(function(locations) {
-      totalPages = locations.length;
-    });
-
-    rendition.on('relocated', function(location) {
-      var page = 0;
-      if (location.start && location.start.location !== undefined) {
-        page = location.start.location;
-      }
-      var cfi = location.start ? location.start.cfi : '';
-      var total = totalPages || 1;
       window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'locationChange',
-        cfi: cfi,
-        page: page,
-        total: total
+        type: 'pageChange', page: num - 1, total: totalPages
+      }));
+    }
+
+    var data = b64ToUint8('${base64}');
+    pdfjsLib.getDocument({ data: data }).promise.then(function(pdf) {
+      pdfDoc = pdf;
+      totalPages = pdf.numPages;
+      if (currentPage > totalPages) currentPage = 1;
+      renderPage(currentPage);
+    }).catch(function(err) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'error', message: err.message || 'PDF load error'
       }));
     });
 
-    rendition.on('click', function(e) {
-      var width = window.innerWidth;
+    document.body.addEventListener('click', function(e) {
+      var w = window.innerWidth;
       var x = e.clientX;
-      if (x < width * 0.25) {
-        rendition.prev();
-      } else if (x > width * 0.75) {
-        rendition.next();
+      if (x < w * 0.25) {
+        if (currentPage > 1) { currentPage--; renderPage(currentPage); }
+      } else if (x > w * 0.75) {
+        if (currentPage < totalPages) { currentPage++; renderPage(currentPage); }
       } else {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tap' }));
       }
@@ -125,11 +118,14 @@ function generateHtml(
     window.addEventListener('message', function(e) {
       try {
         var msg = JSON.parse(e.data);
-        if (msg.type === 'next') rendition.next();
-        if (msg.type === 'prev') rendition.prev();
-        if (msg.type === 'fontSize') {
-          currentFontSize = msg.size;
-          applyTheme();
+        if (msg.type === 'next' && currentPage < totalPages) {
+          currentPage++; renderPage(currentPage);
+        }
+        if (msg.type === 'prev' && currentPage > 1) {
+          currentPage--; renderPage(currentPage);
+        }
+        if (msg.type === 'goToPage' && msg.page >= 1 && msg.page <= totalPages) {
+          currentPage = msg.page; renderPage(currentPage);
         }
       } catch(err) {}
     });
@@ -138,12 +134,11 @@ function generateHtml(
 </html>`;
 }
 
-export const EpubReader = forwardRef<EpubReaderHandle, Props>(
-  ({ uri, lastCfi, fontSize, lineHeight, theme, onLocationChange, onTap }, ref) => {
+export const PdfReader = forwardRef<PdfReaderHandle, Props>(
+  ({ uri, initialPage, theme, onPageChange, onTap }, ref) => {
     const webViewRef = useRef<WebView>(null);
     const [html, setHtml] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const prevFontSize = useRef(fontSize);
 
     useImperativeHandle(ref, () => ({
       nextPage: () => {
@@ -156,21 +151,12 @@ export const EpubReader = forwardRef<EpubReaderHandle, Props>(
           `window.dispatchEvent(new MessageEvent('message', { data: '{"type":"prev"}' })); true;`
         );
       },
-      setFontSize: (size: number) => {
+      goToPage: (page: number) => {
         webViewRef.current?.injectJavaScript(
-          `window.dispatchEvent(new MessageEvent('message', { data: '${JSON.stringify({ type: 'fontSize', size })}' })); true;`
+          `window.dispatchEvent(new MessageEvent('message', { data: '${JSON.stringify({ type: 'goToPage', page: page + 1 })}' })); true;`
         );
       },
     }));
-
-    useEffect(() => {
-      if (prevFontSize.current !== fontSize) {
-        prevFontSize.current = fontSize;
-        webViewRef.current?.injectJavaScript(
-          `window.dispatchEvent(new MessageEvent('message', { data: '${JSON.stringify({ type: 'fontSize', size: fontSize })}' })); true;`
-        );
-      }
-    }, [fontSize]);
 
     useEffect(() => {
       (async () => {
@@ -178,21 +164,19 @@ export const EpubReader = forwardRef<EpubReaderHandle, Props>(
           const base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          const page = generateHtml(base64, lastCfi, fontSize, lineHeight, theme);
+          const page = generateHtml(base64, initialPage, theme);
           setHtml(page);
         } catch (err) {
-          console.error('Failed to load EPUB:', err);
+          console.error('Failed to load PDF:', err);
         }
       })();
-      // Only load once on mount
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleMessage = (event: { nativeEvent: { data: string } }) => {
       try {
         const msg = JSON.parse(event.nativeEvent.data);
-        if (msg.type === 'locationChange') {
-          onLocationChange(msg.cfi, msg.page, msg.total);
+        if (msg.type === 'pageChange') {
+          onPageChange(msg.page, msg.total);
         } else if (msg.type === 'tap') {
           onTap();
         }

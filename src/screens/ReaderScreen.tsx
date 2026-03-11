@@ -13,17 +13,12 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as FileSystem from 'expo-file-system';
-import Pdf from 'react-native-pdf';
 import { useAppStore } from '../store/appStore';
 import { EpubReader, EpubReaderHandle } from '../components/EpubReader';
+import { PdfReader, PdfReaderHandle } from '../components/PdfReader';
 import { Notepad } from '../components/Notepad';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
-
-const THEME_COLORS = {
-  dark: { bg: '#0f0e0c', fg: '#e8d5b5' },
-  sepia: { bg: '#f4efe6', fg: '#3d2b1f' },
-  light: { bg: '#ffffff', fg: '#1a1a1a' },
-};
+import { colors, READER_THEMES } from '../theme';
 
 export function ReaderScreen() {
   const router = useRouter();
@@ -40,7 +35,7 @@ export function ReaderScreen() {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const epubRef = useRef<EpubReaderHandle>(null);
-  const pdfRef = useRef<Pdf>(null);
+  const pdfRef = useRef<PdfReaderHandle>(null);
 
   useEffect(() => {
     if (settings.keepScreenAwake) {
@@ -67,26 +62,18 @@ export function ReaderScreen() {
     if (currentBook.type === 'epub') {
       epubRef.current?.nextPage();
     } else if (currentBook.type === 'pdf') {
-      if (currentPage < totalPages - 1) {
-        const next = currentPage + 1;
-        setCurrentPage(next);
-        updateBookProgress(currentBook.id, next);
-      }
+      pdfRef.current?.nextPage();
     }
-  }, [currentBook, currentPage, totalPages, updateBookProgress]);
+  }, [currentBook]);
 
   const goPrev = useCallback(() => {
     if (!currentBook) return;
     if (currentBook.type === 'epub') {
       epubRef.current?.prevPage();
     } else if (currentBook.type === 'pdf') {
-      if (currentPage > 0) {
-        const prev = currentPage - 1;
-        setCurrentPage(prev);
-        updateBookProgress(currentBook.id, prev);
-      }
+      pdfRef.current?.prevPage();
     }
-  }, [currentBook, currentPage, updateBookProgress]);
+  }, [currentBook]);
 
   const openNotes = useCallback(() => {
     setNotepadVisible(true);
@@ -109,13 +96,13 @@ export function ReaderScreen() {
   };
 
   const progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
-  const themeColors = THEME_COLORS[settings.theme];
+  const readerTheme = READER_THEMES[settings.theme];
 
   if (!currentBook) {
     return (
       <View style={styles.errorContainer}>
         <StatusBar hidden />
-        <Ionicons name="alert-circle-outline" size={48} color="#6b5e4e" />
+        <Ionicons name="alert-circle-outline" size={48} color={colors.textDim} />
         <Text style={styles.errorText}>Kein Buch ausgewählt</Text>
         <TouchableOpacity style={styles.errorBtn} onPress={() => router.back()}>
           <Text style={styles.errorBtnText}>Zurück zur Bibliothek</Text>
@@ -125,7 +112,7 @@ export function ReaderScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.bg }]}>
+    <View style={[styles.container, { backgroundColor: readerTheme.bg }]}>
       <StatusBar hidden />
 
       {/* Hidden TextInput for keyboard capture */}
@@ -144,24 +131,17 @@ export function ReaderScreen() {
 
       {/* PDF Reader */}
       {currentBook.type === 'pdf' && (
-        <Pdf
+        <PdfReader
           ref={pdfRef}
-          source={{ uri: currentBook.uri }}
-          page={currentPage + 1}
-          enablePaging
-          horizontal
-          fitPolicy={0}
-          style={styles.pdf}
-          onLoadComplete={(numberOfPages) => {
-            setTotalPages(numberOfPages);
-            updateBookProgress(currentBook.id, currentPage, undefined, numberOfPages);
+          uri={currentBook.uri}
+          initialPage={currentPage}
+          theme={settings.theme}
+          onPageChange={(page, total) => {
+            setCurrentPage(page);
+            setTotalPages(total);
+            updateBookProgress(currentBook.id, page, undefined, total);
           }}
-          onPageChanged={(page) => {
-            const p = page - 1;
-            setCurrentPage(p);
-            updateBookProgress(currentBook.id, p);
-          }}
-          onPageSingleTap={toggleMenu}
+          onTap={toggleMenu}
         />
       )}
 
@@ -199,10 +179,7 @@ export function ReaderScreen() {
         <View
           style={[
             styles.progressFill,
-            {
-              width: `${progress}%`,
-              backgroundColor: currentBook.coverColor || '#c9a96e',
-            },
+            { width: `${progress}%` },
           ]}
         />
       </View>
@@ -215,20 +192,20 @@ export function ReaderScreen() {
         {/* Top bar */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.topBtn}>
-            <Ionicons name="arrow-back" size={22} color="#e8d5b5" />
+            <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.topTitle} numberOfLines={1}>
             {currentBook.title}
           </Text>
           <TouchableOpacity onPress={() => router.push('/settings')} style={styles.topBtn}>
-            <Ionicons name="settings-outline" size={20} color="#e8d5b5" />
+            <Ionicons name="settings-outline" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
         {/* Bottom bar */}
         <View style={styles.bottomBar}>
           <TouchableOpacity onPress={goPrev} style={styles.bottomBtn}>
-            <Ionicons name="chevron-back" size={22} color="#e8d5b5" />
+            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.bottomCenter}>
             <Text style={styles.pageIndicator}>
@@ -236,7 +213,7 @@ export function ReaderScreen() {
             </Text>
             <View style={styles.fontControls}>
               <TouchableOpacity onPress={() => handleFontSizeChange(-2)} style={styles.fontBtn}>
-                <Text style={styles.fontBtnTextSmall}>A−</Text>
+                <Text style={styles.fontBtnTextSmall}>A-</Text>
               </TouchableOpacity>
               <Text style={styles.fontSizeLabel}>{settings.fontSize}px</Text>
               <TouchableOpacity onPress={() => handleFontSizeChange(2)} style={styles.fontBtn}>
@@ -245,10 +222,10 @@ export function ReaderScreen() {
             </View>
           </View>
           <TouchableOpacity onPress={openNotes} style={styles.bottomBtn}>
-            <Ionicons name="document-text-outline" size={20} color="#e8d5b5" />
+            <Ionicons name="document-text-outline" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
           <TouchableOpacity onPress={goNext} style={styles.bottomBtn}>
-            <Ionicons name="chevron-forward" size={22} color="#e8d5b5" />
+            <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -279,7 +256,7 @@ function TxtReader({
   theme: 'dark' | 'sepia' | 'light';
 }) {
   const [content, setContent] = React.useState('');
-  const colors = THEME_COLORS[theme];
+  const readerColors = READER_THEMES[theme];
 
   React.useEffect(() => {
     (async () => {
@@ -294,10 +271,10 @@ function TxtReader({
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
+      style={{ flex: 1, backgroundColor: readerColors.bg }}
       contentContainerStyle={{ padding: 20 }}
     >
-      <Text style={{ color: colors.fg, fontSize, lineHeight: fontSize * lineHeight }}>
+      <Text style={{ color: readerColors.fg, fontSize, lineHeight: fontSize * lineHeight }}>
         {content}
       </Text>
     </ScrollView>
@@ -314,17 +291,16 @@ const styles = StyleSheet.create({
     top: -10,
     zIndex: 100,
   },
-  pdf: { flex: 1 },
   progressBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     height: 2,
-    backgroundColor: 'rgba(45,39,32,0.5)',
+    backgroundColor: colors.progressTrack,
     zIndex: 20,
   },
-  progressFill: { height: 2 },
+  progressFill: { height: 2, backgroundColor: colors.textPrimary },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
@@ -333,33 +309,37 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(15,14,12,0.9)',
+    backgroundColor: colors.overlayBar,
     paddingTop: 44,
     paddingBottom: 12,
     paddingHorizontal: 12,
     gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   topBtn: { padding: 8 },
   topTitle: {
     flex: 1,
     fontSize: 16,
     fontWeight: '600',
-    color: '#e8d5b5',
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(15,14,12,0.9)',
+    backgroundColor: colors.overlayBar,
     paddingBottom: 30,
     paddingTop: 12,
     paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   bottomBtn: { padding: 10 },
   bottomCenter: { flex: 1, alignItems: 'center' },
   pageIndicator: {
     fontSize: 14,
-    color: '#e8d5b5',
+    color: colors.textPrimary,
     fontWeight: '600',
   },
   fontControls: {
@@ -371,28 +351,30 @@ const styles = StyleSheet.create({
   fontBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#2d2720',
+    backgroundColor: colors.elevated,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  fontBtnTextSmall: { fontSize: 13, color: '#c9b89a' },
-  fontBtnTextLarge: { fontSize: 15, color: '#c9b89a', fontWeight: '600' },
-  fontSizeLabel: { fontSize: 13, color: '#6b5e4e', minWidth: 36, textAlign: 'center' },
+  fontBtnTextSmall: { fontSize: 13, color: colors.textSecondary },
+  fontBtnTextLarge: { fontSize: 15, color: colors.textSecondary, fontWeight: '600' },
+  fontSizeLabel: { fontSize: 13, color: colors.textDim, minWidth: 36, textAlign: 'center' },
   errorContainer: {
     flex: 1,
-    backgroundColor: '#0f0e0c',
+    backgroundColor: colors.bg,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
   },
-  errorText: { fontSize: 16, color: '#6b5e4e', marginTop: 12 },
+  errorText: { fontSize: 16, color: colors.textDim, marginTop: 12 },
   errorBtn: {
     marginTop: 20,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    backgroundColor: '#1a1714',
+    backgroundColor: colors.card,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2d2720',
+    borderColor: colors.border,
   },
-  errorBtnText: { color: '#c9a96e', fontSize: 14 },
+  errorBtnText: { color: colors.textPrimary, fontSize: 14 },
 });
