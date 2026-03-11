@@ -23,8 +23,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-document-picker",
-      "react-native-webview"
+      "expo-document-picker"
     ],
     "experiments": {
       "typedRoutes": true
