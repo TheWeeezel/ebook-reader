@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as FileSystem from 'expo-file-system';
 import { useAppStore } from '../store/appStore';
@@ -22,6 +23,7 @@ import { colors, READER_THEMES } from '../theme';
 
 export function ReaderScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const currentBook = useAppStore((s) => s.currentBook);
   const settings = useAppStore((s) => s.settings);
   const updateBookProgress = useAppStore((s) => s.updateBookProgress);
@@ -88,7 +90,7 @@ export function ReaderScreen() {
   });
 
   const handleFontSizeChange = (delta: number) => {
-    const newSize = Math.min(32, Math.max(12, settings.fontSize + delta));
+    const newSize = Math.min(32, Math.max(18, settings.fontSize + delta));
     updateSettings({ fontSize: newSize });
     if (currentBook?.type === 'epub') {
       epubRef.current?.setFontSize(newSize);
@@ -97,10 +99,11 @@ export function ReaderScreen() {
 
   const progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
   const readerTheme = READER_THEMES[settings.theme];
+  const shouldShowTapZones = !menuVisible && !notepadVisible;
 
   if (!currentBook) {
     return (
-      <View style={styles.errorContainer}>
+      <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
         <StatusBar hidden />
         <Ionicons name="alert-circle-outline" size={48} color={colors.textDim} />
         <Text style={styles.errorText}>Kein Buch ausgewählt</Text>
@@ -171,18 +174,22 @@ export function ReaderScreen() {
           fontSize={settings.fontSize}
           lineHeight={settings.lineHeight}
           theme={settings.theme}
+          topInset={insets.top}
         />
       )}
 
       {/* Progress bar */}
       <View style={styles.progressBar}>
-        <View
-          style={[
-            styles.progressFill,
-            { width: `${progress}%` },
-          ]}
-        />
+        <View style={[styles.progressFill, { width: `${progress}%` }]} />
       </View>
+
+      {shouldShowTapZones && (
+        <View style={styles.tapZones}>
+          <TouchableOpacity style={[styles.tapZone, styles.tapZoneLeft]} onPress={goPrev} activeOpacity={1} />
+          <TouchableOpacity style={[styles.tapZone, styles.tapZoneCenter]} onPress={toggleMenu} activeOpacity={1} />
+          <TouchableOpacity style={[styles.tapZone, styles.tapZoneRight]} onPress={goNext} activeOpacity={1} />
+        </View>
+      )}
 
       {/* Overlay Menu */}
       <Animated.View
@@ -190,43 +197,50 @@ export function ReaderScreen() {
         pointerEvents={menuVisible ? 'auto' : 'none'}
       >
         {/* Top bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.topBtn}>
-            <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 12) + 4 }]}>
+          <TouchableOpacity onPress={toggleMenu} style={styles.iconBtn}>
+            <Ionicons name="chevron-up" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.topTitle} numberOfLines={1}>
             {currentBook.title}
           </Text>
-          <TouchableOpacity onPress={() => router.push('/settings')} style={styles.topBtn}>
+          <TouchableOpacity onPress={() => router.push('/settings')} style={styles.iconBtn}>
             <Ionicons name="settings-outline" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
-        {/* Bottom bar */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity onPress={goPrev} style={styles.bottomBtn}>
-            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.bottomCenter}>
-            <Text style={styles.pageIndicator}>
-              {currentPage + 1} / {totalPages || '?'}
-            </Text>
-            <View style={styles.fontControls}>
-              <TouchableOpacity onPress={() => handleFontSizeChange(-2)} style={styles.fontBtn}>
-                <Text style={styles.fontBtnTextSmall}>A-</Text>
-              </TouchableOpacity>
-              <Text style={styles.fontSizeLabel}>{settings.fontSize}px</Text>
-              <TouchableOpacity onPress={() => handleFontSizeChange(2)} style={styles.fontBtn}>
-                <Text style={styles.fontBtnTextLarge}>A+</Text>
-              </TouchableOpacity>
-            </View>
+        {/* Bottom toolbar */}
+        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) + 4 }]}>
+          {/* Page info */}
+          <Text style={styles.pageInfo}>
+            {currentPage + 1} / {totalPages || '?'}
+            {totalPages > 0 ? `  ·  ${progress}%` : ''}
+          </Text>
+
+          {/* Action row */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity onPress={goPrev} style={styles.actionBtn}>
+              <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => handleFontSizeChange(-2)} style={styles.actionBtn}>
+              <Text style={styles.fontLabel}>A-</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.fontSizeInfo}>{settings.fontSize}px</Text>
+
+            <TouchableOpacity onPress={() => handleFontSizeChange(2)} style={styles.actionBtn}>
+              <Text style={[styles.fontLabel, { fontSize: 16, fontWeight: '700' }]}>A+</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={openNotes} style={styles.actionBtn}>
+              <Ionicons name="document-text-outline" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={goNext} style={styles.actionBtn}>
+              <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={openNotes} style={styles.bottomBtn}>
-            <Ionicons name="document-text-outline" size={20} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={goNext} style={styles.bottomBtn}>
-            <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
         </View>
       </Animated.View>
 
@@ -249,11 +263,13 @@ function TxtReader({
   fontSize,
   lineHeight,
   theme,
+  topInset,
 }: {
   uri: string;
   fontSize: number;
   lineHeight: number;
   theme: 'dark' | 'sepia' | 'light';
+  topInset: number;
 }) {
   const [content, setContent] = React.useState('');
   const readerColors = READER_THEMES[theme];
@@ -272,7 +288,7 @@ function TxtReader({
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: readerColors.bg }}
-      contentContainerStyle={{ padding: 20 }}
+      contentContainerStyle={{ padding: 20, paddingTop: topInset + 20 }}
     >
       <Text style={{ color: readerColors.fg, fontSize, lineHeight: fontSize * lineHeight }}>
         {content}
@@ -301,6 +317,19 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   progressFill: { height: 2, backgroundColor: colors.textPrimary },
+  tapZones: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    zIndex: 5,
+  },
+  tapZone: { justifyContent: 'center' },
+  tapZoneLeft: {
+    flex: 4,
+  },
+  tapZoneCenter: { flex: 2 },
+  tapZoneRight: {
+    flex: 4,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
@@ -310,55 +339,68 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.overlayBar,
-    paddingTop: 44,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingBottom: 10,
+    paddingHorizontal: 8,
+    gap: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.textPrimary,
   },
-  topBtn: { padding: 8 },
   topTitle: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: colors.textPrimary,
     textAlign: 'center',
+    marginHorizontal: 8,
   },
   bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.overlayBar,
-    paddingBottom: 30,
-    paddingTop: 12,
-    paddingHorizontal: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    borderTopWidth: 2,
+    borderTopColor: colors.textPrimary,
+    alignItems: 'center',
   },
-  bottomBtn: { padding: 10 },
-  bottomCenter: { flex: 1, alignItems: 'center' },
-  pageIndicator: {
-    fontSize: 14,
+  pageInfo: {
+    fontSize: 13,
     color: colors.textPrimary,
-    fontWeight: '600',
+    fontWeight: '700',
+    marginBottom: 10,
   },
-  fontControls: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginTop: 6,
+    justifyContent: 'center',
+    gap: 6,
   },
-  fontBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: colors.elevated,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
+  actionBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 8,
+    backgroundColor: colors.bg,
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  fontBtnTextSmall: { fontSize: 13, color: colors.textSecondary },
-  fontBtnTextLarge: { fontSize: 15, color: colors.textSecondary, fontWeight: '600' },
-  fontSizeLabel: { fontSize: 13, color: colors.textDim, minWidth: 36, textAlign: 'center' },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  fontLabel: { fontSize: 14, color: colors.textPrimary, fontWeight: '600' },
+  fontSizeInfo: {
+    fontSize: 12,
+    color: colors.textPrimary,
+    fontWeight: '700',
+    minWidth: 40,
+    textAlign: 'center',
+  },
   errorContainer: {
     flex: 1,
     backgroundColor: colors.bg,

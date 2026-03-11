@@ -78,9 +78,19 @@ function generateHtml(bookFileUri: string, initialPage: number, theme: 'dark' | 
       }));
     }
 
-    // Load PDF from file URI
-    fetch('${bookFileUri}')
-      .then(function(r) { return r.arrayBuffer(); })
+    // Load PDF from file URI via XHR (fetch doesn't support file://)
+    function loadFile(url) {
+      return new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.onload = function() { resolve(xhr.response); };
+        xhr.onerror = function() { reject(new Error('XHR failed for ' + url)); };
+        xhr.send();
+      });
+    }
+
+    loadFile('${bookFileUri}')
       .then(function(data) {
         return pdfjsLib.getDocument({ data: data }).promise;
       })
@@ -102,9 +112,9 @@ function generateHtml(bookFileUri: string, initialPage: number, theme: 'dark' | 
     document.body.addEventListener('click', function(e) {
       var w = window.innerWidth;
       var x = e.clientX;
-      if (x < w * 0.25) {
+      if (x < w * 0.4) {
         if (currentPage > 1) { currentPage--; renderPage(currentPage); }
-      } else if (x > w * 0.75) {
+      } else if (x > w * 0.6) {
         if (currentPage < totalPages) { currentPage++; renderPage(currentPage); }
       } else {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tap' }));

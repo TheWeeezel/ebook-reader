@@ -9,11 +9,18 @@ export interface Book {
   title: string;
   uri: string;
   type: BookType;
+  groupId?: string | null;
   lastPage: number;
   lastCfi?: string;
   totalPages: number;
   addedAt: number;
   coverColor?: string;
+}
+
+export interface BookGroup {
+  id: string;
+  name: string;
+  createdAt: number;
 }
 
 export interface Note {
@@ -57,8 +64,38 @@ const DEFAULT_SETTINGS: Settings = {
   keepScreenAwake: true,
 };
 
+const sanitizeBookTitle = (rawTitle: string): string => {
+  const base = rawTitle.replace(/\.[^/.]+$/, '');
+  const cleaned = base
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) return 'Untitled';
+
+  return cleaned
+    .split(' ')
+    .map((word) => {
+      if (!word) return '';
+      if (/^\d+$/.test(word)) return word;
+
+      if (
+        word.length <= 4 &&
+        /^[A-Z0-9]+$/.test(word) &&
+        word === word.toUpperCase()
+      ) {
+        return word;
+      }
+
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .filter(Boolean)
+    .join(' ');
+};
+
 interface AppState {
   books: Book[];
+  groups: BookGroup[];
   notes: Record<string, Note[]>;
   settings: Settings;
   currentBook: Book | null;
@@ -69,6 +106,9 @@ interface AppState {
   removeBook: (id: string) => Promise<void>;
   setCurrentBook: (book: Book | null) => void;
   updateBookProgress: (id: string, page: number, cfi?: string, totalPages?: number) => Promise<void>;
+  addGroup: (name: string) => Promise<BookGroup | null>;
+  assignBooksToGroup: (bookIds: string[], groupId: string | null) => Promise<void>;
+  removeGroup: (groupId: string) => Promise<void>;
 
   addNote: (note: Omit<Note, 'id' | 'createdAt'>) => Promise<void>;
   updateNote: (bookId: string, noteId: string, text: string) => Promise<void>;
@@ -82,6 +122,10 @@ const saveLibrary = async (books: Book[]) => {
   await AsyncStorage.setItem('library', JSON.stringify(books));
 };
 
+const saveGroups = async (groups: BookGroup[]) => {
+  await AsyncStorage.setItem('groups', JSON.stringify(groups));
+};
+
 const saveNotes = async (notes: Record<string, Note[]>) => {
   await AsyncStorage.setItem('notes', JSON.stringify(notes));
 };
@@ -92,6 +136,7 @@ const saveSettings = async (settings: Settings) => {
 
 export const useAppStore = create<AppState>((set, get) => ({
   books: [],
+  groups: [],
   notes: {},
   settings: DEFAULT_SETTINGS,
   currentBook: null,
@@ -99,17 +144,25 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   init: async () => {
     try {
-      const [libraryStr, notesStr, settingsStr] = await Promise.all([
+      const [libraryStr, groupsStr, notesStr, settingsStr] = await Promise.all([
         AsyncStorage.getItem('library'),
+        AsyncStorage.getItem('groups'),
         AsyncStorage.getItem('notes'),
         AsyncStorage.getItem('settings'),
       ]);
-      const books = libraryStr ? JSON.parse(libraryStr) : [];
+      const books = libraryStr
+        ? (JSON.parse(libraryStr) as Book[]).map((b) => ({
+            ...b,
+            title: sanitizeBookTitle(b.title),
+            groupId: b.groupId ?? null,
+          }))
+        : [];
+      const groups = groupsStr ? JSON.parse(groupsStr) : [];
       const notes = notesStr ? JSON.parse(notesStr) : {};
       const settings = settingsStr
         ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsStr) }
         : DEFAULT_SETTINGS;
-      set({ books, notes, settings, initialized: true });
+      set({ books, groups, notes, settings, initialized: true });
     } catch {
       set({ initialized: true });
     }
@@ -120,9 +173,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const colorIndex = books.length % ACCENT_COLORS.length;
     const book: Book = {
       ...bookData,
+      title: sanitizeBookTitle(bookData.title),
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       addedAt: Date.now(),
       coverColor: ACCENT_COLORS[colorIndex],
+      groupId: bookData.groupId ?? null,
     };
     const newBooks = [book, ...books];
     set({ books: newBooks });
@@ -139,6 +194,76 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setCurrentBook: (book) => set({ currentBook: book }),
+
+  addGroup: async (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+
+    const { groups } = get();
+    const existing = groups.find((g) => g.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) return existing;
+
+    const group: BookGroup = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      name: trimmed,
+      createdAt: Date.now(),
+    };
+    const newGroups = [...groups, group].sort((a, b) => a.name.localeCompare(b.name));
+    set({ groups: newGroups });
+    await saveGroups(newGroups);
+    return group;
+  },
+
+  assignBooksToGroup: async (bookIds, groupId) => {
+    if (!bookIds.length) return;
+    const idSet = new Set(bookIds);
+    const normalizedGroupId = groupId ?? null;
+
+    const { books, currentBook } = get();
+    const newBooks = books.map((b) =>
+      idSet.has(b.id)
+        ? {
+            ...b,
+            groupId: normalizedGroupId,
+          }
+        : b
+    );
+
+    const updatedCurrent =
+      currentBook && idSet.has(currentBook.id)
+        ? {
+            ...currentBook,
+            groupId: normalizedGroupId,
+          }
+        : currentBook;
+
+    set({ books: newBooks, currentBook: updatedCurrent });
+    await saveLibrary(newBooks);
+  },
+
+  removeGroup: async (groupId) => {
+    const { groups, books, currentBook } = get();
+    const newGroups = groups.filter((g) => g.id !== groupId);
+    const newBooks = books.map((b) =>
+      b.groupId === groupId
+        ? {
+            ...b,
+            groupId: null,
+          }
+        : b
+    );
+
+    const updatedCurrent =
+      currentBook?.groupId === groupId
+        ? {
+            ...currentBook,
+            groupId: null,
+          }
+        : currentBook;
+
+    set({ groups: newGroups, books: newBooks, currentBook: updatedCurrent });
+    await Promise.all([saveGroups(newGroups), saveLibrary(newBooks)]);
+  },
 
   updateBookProgress: async (id, page, cfi, totalPages) => {
     const { books } = get();

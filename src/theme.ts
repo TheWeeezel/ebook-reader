@@ -5,35 +5,41 @@
 
 export const colors = {
   bg: '#ffffff',
-  card: '#f5f5f5',
-  border: '#d4d4d4',
-  elevated: '#e8e8e8',
-  textPrimary: '#1a1a1a',
-  textSecondary: '#4a4a4a',
-  textDim: '#808080',
-  textVeryDim: '#b0b0b0',
-  accent: '#1a1a1a',
-  accentSoft: '#4a4a4a',
-  danger: '#1a1a1a',
-  overlay: 'rgba(0,0,0,0.5)',
-  overlayBar: 'rgba(255,255,255,0.95)',
-  progressTrack: '#d4d4d4',
-  fabBg: '#1a1a1a',
+  card: '#ffffff',
+  border: '#000000',
+  elevated: '#ffffff',
+  textPrimary: '#000000',
+  textSecondary: '#000000',
+  textDim: '#000000',
+  textVeryDim: '#3a3a3a',
+  accent: '#000000',
+  accentSoft: '#000000',
+  danger: '#000000',
+  overlay: 'rgba(0,0,0,0.82)',
+  overlayBar: '#ffffff',
+  progressTrack: '#ffffff',
+  fabBg: '#000000',
   fabFg: '#ffffff',
-  switchTrackOn: '#1a1a1a',
-  switchTrackOff: '#d4d4d4',
+  switchTrackOn: '#000000',
+  switchTrackOff: '#ffffff',
   switchThumb: '#ffffff',
 };
 
 /** Accent colors for books — monochromatic grayscale */
 export const ACCENT_COLORS = [
-  '#1a1a1a', '#4a4a4a', '#6a6a6a', '#3a3a3a',
-  '#5a5a5a', '#2a2a2a', '#7a7a7a', '#505050',
+  '#000000',
+  '#000000',
+  '#000000',
+  '#000000',
+  '#000000',
+  '#000000',
+  '#000000',
+  '#000000',
 ];
 
 /** Reader theme colors */
 export const READER_THEMES = {
-  dark: { bg: '#1a1a1a', fg: '#d4d4d4' },
-  sepia: { bg: '#f4efe6', fg: '#3d2b1f' },
-  light: { bg: '#ffffff', fg: '#1a1a1a' },
+  dark: { bg: '#000000', fg: '#ffffff' },
+  sepia: { bg: '#ffffff', fg: '#000000' },
+  light: { bg: '#ffffff', fg: '#000000' },
 };

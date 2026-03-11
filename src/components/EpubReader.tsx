@@ -32,13 +32,14 @@ function generateHtml(
 <html>
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: ${colors.bg}; }
-    #viewer { width: 100%; height: 100%; }
+    html, body { width: 100vw; height: 100vh; overflow: hidden; background: ${colors.bg}; }
+    #viewer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
     #status { color: ${colors.fg}; font-family: sans-serif; font-size: 14px;
-              position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+              position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 10; }
   </style>
 </head>
 <body>
@@ -50,18 +51,30 @@ function generateHtml(
     var themeBg = '${colors.bg}';
     var themeFg = '${colors.fg}';
 
-    // Fetch the EPUB file as ArrayBuffer
-    fetch('${bookFileUri}')
-      .then(function(r) { return r.arrayBuffer(); })
+    // Load EPUB from file URI via XHR (fetch doesn't support file://)
+    function loadFile(url) {
+      return new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.onload = function() { resolve(xhr.response); };
+        xhr.onerror = function() { reject(new Error('XHR failed for ' + url)); };
+        xhr.send();
+      });
+    }
+
+    loadFile('${bookFileUri}')
       .then(function(data) {
         document.getElementById('status').style.display = 'none';
 
         var book = ePub(data);
+        var vw = window.innerWidth;
+        var vh = window.innerHeight;
         var rendition = book.renderTo('viewer', {
           flow: 'paginated',
           spread: 'none',
-          width: '100%',
-          height: '100%'
+          width: vw,
+          height: vh
         });
 
         function applyTheme() {
@@ -107,11 +120,15 @@ function generateHtml(
         });
 
         rendition.on('click', function(e) {
+          if (e && e.preventDefault) e.preventDefault();
+          if (e && e.stopPropagation) e.stopPropagation();
+
           var width = window.innerWidth;
-          var x = e.clientX;
-          if (x < width * 0.25) {
+          var x = (e && typeof e.clientX === 'number') ? e.clientX : width / 2;
+
+          if (x < width * 0.4) {
             rendition.prev();
-          } else if (x > width * 0.75) {
+          } else if (x > width * 0.6) {
             rendition.next();
           } else {
             window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tap' }));
@@ -196,6 +213,8 @@ export const EpubReader = forwardRef<EpubReaderHandle, Props>(
           onLocationChange(msg.cfi, msg.page, msg.total);
         } else if (msg.type === 'tap') {
           onTap();
+        } else if (msg.type === 'error') {
+          console.error('[EPUB Error]', msg.message);
         }
       } catch {}
     };

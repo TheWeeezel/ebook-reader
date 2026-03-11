@@ -4,22 +4,25 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
-  TextInput,
   ScrollView,
   StyleSheet,
   Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore, Note, Book } from '../store/appStore';
 import { colors } from '../theme';
+import { NoteEditorModal } from '../components/NoteEditorModal';
+
+type NoteWithBook = Note & { bookTitle: string };
 
 export function NotesScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ bookId?: string }>();
   const [filterBookId, setFilterBookId] = useState<string | null>(params.bookId || null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
+  const [editorNote, setEditorNote] = useState<NoteWithBook | null>(null);
+  const insets = useSafeAreaInsets();
 
   const books = useAppStore((s) => s.books);
   const allNotes = useAppStore((s) => s.notes);
@@ -28,7 +31,9 @@ export function NotesScreen() {
 
   const bookMap = useMemo(() => {
     const map: Record<string, Book> = {};
-    books.forEach((b) => { map[b.id] = b; });
+    books.forEach((b) => {
+      map[b.id] = b;
+    });
     return map;
   }, [books]);
 
@@ -37,8 +42,9 @@ export function NotesScreen() {
   }, [books, allNotes]);
 
   const flatNotes = useMemo(() => {
-    const result: (Note & { bookTitle: string })[] = [];
+    const result: NoteWithBook[] = [];
     const bookIds = filterBookId ? [filterBookId] : Object.keys(allNotes);
+
     for (const bookId of bookIds) {
       const notes = allNotes[bookId] || [];
       const book = bookMap[bookId];
@@ -47,93 +53,66 @@ export function NotesScreen() {
         result.push({ ...note, bookTitle: book.title });
       }
     }
+
     return result.sort((a, b) => b.createdAt - a.createdAt);
   }, [allNotes, filterBookId, bookMap]);
 
-  const handleDelete = (note: Note) => {
+  const handleDelete = (note: Note, onDone?: () => void) => {
     Alert.alert('Notiz löschen', 'Möchtest du diese Notiz wirklich löschen?', [
       { text: 'Abbrechen', style: 'cancel' },
       {
         text: 'Löschen',
         style: 'destructive',
-        onPress: () => deleteNote(note.bookId, note.id),
+        onPress: () => {
+          deleteNote(note.bookId, note.id);
+          onDone?.();
+        },
       },
     ]);
   };
 
-  const handleStartEdit = (note: Note) => {
-    setEditingId(note.id);
-    setEditText(note.text);
-  };
-
-  const handleSaveEdit = (bookId: string) => {
-    if (editingId && editText.trim()) {
-      updateNote(bookId, editingId, editText.trim());
-    }
-    setEditingId(null);
-    setEditText('');
+  const handleSaveEditor = (text: string) => {
+    if (!editorNote) return;
+    updateNote(editorNote.bookId, editorNote.id, text);
+    setEditorNote(null);
   };
 
   const formatDate = (ts: number) => {
     const d = new Date(ts);
-    return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`;
+    return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1)
+      .toString()
+      .padStart(2, '0')}.${d.getFullYear()}`;
   };
 
   const filterBook = filterBookId ? bookMap[filterBookId] : null;
 
-  const renderNote = ({ item }: { item: Note & { bookTitle: string } }) => (
-    <View style={styles.noteCard}>
+  const renderNote = ({ item }: { item: NoteWithBook }) => (
+    <TouchableOpacity style={styles.noteCard} onPress={() => setEditorNote(item)} activeOpacity={0.85}>
       {!filterBookId && (
-        <TouchableOpacity
-          onPress={() => setFilterBookId(item.bookId)}
-          style={styles.bookTag}
-        >
+        <View style={styles.bookTag}>
           <Text style={styles.bookTagText} numberOfLines={1}>
             {item.bookTitle}
           </Text>
-        </TouchableOpacity>
+        </View>
       )}
 
-      {editingId === item.id ? (
-        <View style={styles.editContainer}>
-          <TextInput
-            style={styles.editInput}
-            value={editText}
-            onChangeText={setEditText}
-            multiline
-            autoFocus
-            placeholderTextColor={colors.textDim}
-          />
-          <TouchableOpacity onPress={() => handleSaveEdit(item.bookId)} style={styles.saveBtn}>
-            <Ionicons name="checkmark" size={18} color={colors.textPrimary} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity onLongPress={() => handleStartEdit(item)} activeOpacity={0.7}>
-          <Text style={styles.noteText}>{item.text}</Text>
-        </TouchableOpacity>
-      )}
+      <Text style={styles.noteText} numberOfLines={5}>
+        {item.text}
+      </Text>
 
       <View style={styles.noteMeta}>
-        {item.page !== undefined && (
-          <Text style={styles.noteMetaText}>Seite {item.page + 1}</Text>
-        )}
-        <View style={{ flex: 1 }} />
-        <Text style={styles.noteMetaText}>{formatDate(item.createdAt)}</Text>
-        <TouchableOpacity
-          onPress={() => handleDelete(item)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{ marginLeft: 8 }}
-        >
-          <Ionicons name="trash-outline" size={16} color={colors.textDim} />
-        </TouchableOpacity>
+        <View style={styles.noteMetaLeft}>
+          {item.page !== undefined && <Text style={styles.noteMetaText}>Seite {item.page + 1}</Text>}
+          <Text style={styles.noteMetaText}>{formatDate(item.createdAt)}</Text>
+        </View>
+        <Text style={styles.editHint}>Tippen zum Bearbeiten</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
@@ -149,7 +128,7 @@ export function NotesScreen() {
             {filterBook.title}
           </Text>
           <TouchableOpacity onPress={() => setFilterBookId(null)}>
-            <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+            <Ionicons name="close-circle" size={18} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
       )}
@@ -170,9 +149,7 @@ export function NotesScreen() {
                 {book.title}
               </Text>
               <View style={styles.chipBadge}>
-                <Text style={styles.chipBadgeText}>
-                  {(allNotes[book.id] || []).length}
-                </Text>
+                <Text style={styles.chipBadgeText}>{(allNotes[book.id] || []).length}</Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -186,13 +163,21 @@ export function NotesScreen() {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="document-text-outline" size={48} color={colors.textVeryDim} />
+            <Ionicons name="document-text-outline" size={48} color={colors.textPrimary} />
             <Text style={styles.emptyTitle}>Keine Notizen</Text>
-            <Text style={styles.emptyHint}>
-              Erstelle Notizen beim Lesen über das Notiz-Symbol im Reader.
-            </Text>
+            <Text style={styles.emptyHint}>Erstelle Notizen beim Lesen über das Notiz-Symbol im Reader.</Text>
           </View>
         }
+      />
+
+      <NoteEditorModal
+        visible={!!editorNote}
+        title="Notiz bearbeiten"
+        subtitle={editorNote ? editorNote.bookTitle : undefined}
+        initialText={editorNote?.text || ''}
+        onClose={() => setEditorNote(null)}
+        onSave={handleSaveEditor}
+        onDelete={editorNote ? () => handleDelete(editorNote, () => setEditorNote(null)) : undefined}
       />
     </View>
   );
@@ -203,41 +188,44 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 50,
     paddingBottom: 12,
     paddingHorizontal: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.textPrimary,
   },
   backBtn: { padding: 8, marginRight: 8 },
   headerCenter: { flex: 1 },
   headerTitle: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
-  headerCount: { fontSize: 13, color: colors.textDim, marginTop: 2 },
+  headerCount: { fontSize: 13, color: colors.textPrimary, marginTop: 2 },
   activeFilter: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginHorizontal: 16,
+    marginTop: 10,
     marginBottom: 8,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
   },
-  activeFilterText: { flex: 1, color: colors.textSecondary, fontSize: 14, fontWeight: '500' },
-  filterChips: { paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
+  activeFilterText: { flex: 1, color: colors.textPrimary, fontSize: 14, fontWeight: '600' },
+  filterChips: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 2,
     borderColor: colors.textPrimary,
     marginRight: 8,
+    backgroundColor: colors.bg,
   },
-  filterChipText: { fontSize: 13, fontWeight: '500', maxWidth: 120, color: colors.textPrimary },
+  filterChipText: { fontSize: 13, fontWeight: '600', maxWidth: 120, color: colors.textPrimary },
   chipBadge: {
     minWidth: 20,
     height: 20,
@@ -245,54 +233,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 5,
-    backgroundColor: colors.textPrimary,
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    backgroundColor: colors.bg,
   },
-  chipBadgeText: { fontSize: 11, fontWeight: '700', color: colors.bg },
+  chipBadgeText: { fontSize: 11, fontWeight: '700', color: colors.textPrimary },
   list: { padding: 16, paddingBottom: 40 },
   noteCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
+    backgroundColor: colors.bg,
+    borderRadius: 10,
     padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
   },
   bookTag: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 6,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.textPrimary,
-    marginBottom: 8,
+    marginBottom: 10,
+    backgroundColor: colors.bg,
   },
-  bookTagText: { fontSize: 11, fontWeight: '600', color: colors.textPrimary },
-  noteText: { color: colors.textPrimary, fontSize: 14, lineHeight: 20 },
+  bookTagText: { fontSize: 11, fontWeight: '700', color: colors.textPrimary },
+  noteText: { color: colors.textPrimary, fontSize: 16, lineHeight: 24 },
   noteMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 12,
   },
-  noteMetaText: { fontSize: 12, color: colors.textDim },
-  editContainer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  editInput: {
-    flex: 1,
-    color: colors.textPrimary,
-    fontSize: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.textPrimary,
-    paddingVertical: 4,
-  },
-  saveBtn: { padding: 4 },
+  noteMetaLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  noteMetaText: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
+  editHint: { marginLeft: 'auto', fontSize: 12, color: colors.textPrimary, fontWeight: '700' },
   empty: {
     alignItems: 'center',
     paddingTop: 80,
     paddingHorizontal: 40,
   },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: colors.textDim, marginTop: 16 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginTop: 16 },
   emptyHint: {
     fontSize: 14,
-    color: colors.textVeryDim,
+    color: colors.textPrimary,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,

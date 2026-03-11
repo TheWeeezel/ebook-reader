@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore, KeyBinding } from '../store/appStore';
 import { colors } from '../theme';
 
@@ -34,6 +35,7 @@ export function SettingsScreen() {
   const updateSettings = useAppStore((s) => s.updateSettings);
   const updateKeyBinding = useAppStore((s) => s.updateKeyBinding);
 
+  const insets = useSafeAreaInsets();
   const [captureIndex, setCaptureIndex] = useState<number | null>(null);
   const [capturedKey, setCapturedKey] = useState<string>('');
 
@@ -58,7 +60,7 @@ export function SettingsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
@@ -97,7 +99,7 @@ export function SettingsScreen() {
           <View style={styles.fontSizeRow}>
             <TouchableOpacity
               style={styles.fontBtn}
-              onPress={() => updateSettings({ fontSize: Math.max(12, settings.fontSize - 2) })}
+              onPress={() => updateSettings({ fontSize: Math.max(18, settings.fontSize - 2) })}
             >
               <Text style={styles.fontBtnText}>A-</Text>
             </TouchableOpacity>
@@ -233,7 +235,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 50,
     paddingBottom: 12,
     paddingHorizontal: 16,
   },
