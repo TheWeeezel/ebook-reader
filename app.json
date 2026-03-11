@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "PageTurner",
+    "slug": "page-turner",
+    "version": "1.0.0",
+    "scheme": "pageturner",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "backgroundColor": "#0f0e0c"
+    },
+    "android": {
+      "package": "com.pageturner.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f0e0c"
+      },
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-document-picker",
+      "react-native-webview"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
