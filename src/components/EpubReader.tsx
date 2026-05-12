@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useRef, useEffect, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useEffect, useState, useCallback } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
@@ -8,6 +8,11 @@ export interface EpubReaderHandle {
   nextPage: () => void;
   prevPage: () => void;
   setFontSize: (size: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
+  panBy: (dx: number, dy: number) => void;
+  extractText: () => Promise<string>;
 }
 
 interface Props {
@@ -18,6 +23,7 @@ interface Props {
   theme: 'dark' | 'sepia' | 'light';
   onLocationChange: (cfi: string, page: number, total: number) => void;
   onTap: () => void;
+  onZoomChange: (zoomed: boolean) => void;
 }
 
 function generateHtml(
@@ -37,7 +43,15 @@ function generateHtml(
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100vw; height: 100vh; overflow: hidden; background: ${colors.bg}; }
-    #viewer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+    #viewer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      transform-origin: top left;
+      will-change: transform;
+    }
     #status { color: ${colors.fg}; font-family: sans-serif; font-size: 14px;
               position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 10; }
   </style>
@@ -46,10 +60,135 @@ function generateHtml(
   <div id="status">Loading EPUB...</div>
   <div id="viewer"></div>
   <script>
+    var viewerEl = document.getElementById('viewer');
     var currentFontSize = ${fontSize};
     var currentLineHeight = ${lineHeight};
     var themeBg = '${colors.bg}';
     var themeFg = '${colors.fg}';
+    var rendition = null;
+    var zoomScale = 1;
+    var panX = 0;
+    var panY = 0;
+    var zoomActive = false;
+    var minZoom = 1;
+    var maxZoom = 4;
+
+    function postToNative(payload) {
+      window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function getBaseSize() {
+      return {
+        width: window.innerWidth,
+        height: window.innerHeight
+      };
+    }
+
+    function getPanBounds(scale) {
+      var base = getBaseSize();
+      var viewportWidth = window.innerWidth;
+      var viewportHeight = window.innerHeight;
+      var scaledWidth = base.width * scale;
+      var scaledHeight = base.height * scale;
+      var minX = scaledWidth <= viewportWidth ? Math.round((viewportWidth - scaledWidth) / 2) : viewportWidth - scaledWidth;
+      var maxX = scaledWidth <= viewportWidth ? minX : 0;
+      var minY = scaledHeight <= viewportHeight ? Math.round((viewportHeight - scaledHeight) / 2) : viewportHeight - scaledHeight;
+      var maxY = scaledHeight <= viewportHeight ? minY : 0;
+      return { minX: minX, maxX: maxX, minY: minY, maxY: maxY };
+    }
+
+    function clampPan(nextX, nextY, scale) {
+      var bounds = getPanBounds(scale);
+      return {
+        x: clamp(nextX, bounds.minX, bounds.maxX),
+        y: clamp(nextY, bounds.minY, bounds.maxY)
+      };
+    }
+
+    function centerZoom(scale) {
+      var bounds = getPanBounds(scale);
+      panX = Math.round((bounds.minX + bounds.maxX) / 2);
+      panY = Math.round((bounds.minY + bounds.maxY) / 2);
+    }
+
+    function applyTransform(emitChange) {
+      if (zoomScale <= 1.001) {
+        zoomScale = 1;
+        panX = 0;
+        panY = 0;
+      } else {
+        var clampedPan = clampPan(panX, panY, zoomScale);
+        panX = clampedPan.x;
+        panY = clampedPan.y;
+      }
+
+      viewerEl.style.transform = 'translate(' + panX + 'px, ' + panY + 'px) scale(' + zoomScale + ')';
+
+      var nextZoomActive = zoomScale > 1;
+      if (emitChange && nextZoomActive !== zoomActive) {
+        postToNative({ type: 'zoomChange', zoomed: nextZoomActive, scale: zoomScale });
+      }
+      zoomActive = nextZoomActive;
+    }
+
+    function setZoom(nextScale) {
+      var wasZoomed = zoomScale > 1.001;
+      zoomScale = clamp(Math.round(nextScale * 100) / 100, minZoom, maxZoom);
+      if (zoomScale > 1 && !wasZoomed) {
+        centerZoom(zoomScale);
+      }
+      applyTransform(true);
+    }
+
+    function panBy(dx, dy) {
+      if (zoomScale <= 1.001) return;
+      var clampedPan = clampPan(panX + dx, panY + dy, zoomScale);
+      panX = clampedPan.x;
+      panY = clampedPan.y;
+      applyTransform(false);
+    }
+
+    function bindPanHandlers(contents) {
+      var doc = contents && contents.document;
+      if (!doc || doc.documentElement.getAttribute('data-zoom-pan-bound') === 'true') {
+        return;
+      }
+
+      doc.documentElement.setAttribute('data-zoom-pan-bound', 'true');
+
+      var dragPoint = null;
+      function stopDrag() {
+        dragPoint = null;
+      }
+
+      doc.addEventListener('touchstart', function(evt) {
+        if (zoomScale <= 1.001 || !evt.touches || evt.touches.length !== 1) return;
+        var touch = evt.touches[0];
+        dragPoint = { x: touch.clientX, y: touch.clientY };
+        evt.preventDefault();
+      }, { passive: false, capture: true });
+
+      doc.addEventListener('touchmove', function(evt) {
+        if (!dragPoint || zoomScale <= 1.001 || !evt.touches || evt.touches.length !== 1) return;
+        var touch = evt.touches[0];
+        panBy(touch.clientX - dragPoint.x, touch.clientY - dragPoint.y);
+        dragPoint = { x: touch.clientX, y: touch.clientY };
+        evt.preventDefault();
+      }, { passive: false, capture: true });
+
+      doc.addEventListener('touchend', stopDrag, { capture: true });
+      doc.addEventListener('touchcancel', stopDrag, { capture: true });
+
+      doc.addEventListener('click', function(evt) {
+        if (zoomScale <= 1.001) return;
+        evt.preventDefault();
+        evt.stopPropagation();
+      }, true);
+    }
 
     // Load EPUB from file URI via XHR (fetch doesn't support file://)
     function loadFile(url) {
@@ -70,7 +209,7 @@ function generateHtml(
         var book = ePub(data);
         var vw = window.innerWidth;
         var vh = window.innerHeight;
-        var rendition = book.renderTo('viewer', {
+        rendition = book.renderTo('viewer', {
           flow: 'paginated',
           spread: 'none',
           width: vw,
@@ -92,8 +231,11 @@ function generateHtml(
         }
 
         applyTheme();
+        rendition.hooks.content.register(function(contents) {
+          bindPanHandlers(contents);
+        });
 
-        var lastCfi = ${lastCfi ? `'${lastCfi}'` : 'null'};
+        var lastCfi = ${JSON.stringify(lastCfi ?? null)};
         if (lastCfi) {
           rendition.display(lastCfi);
         } else {
@@ -114,14 +256,15 @@ function generateHtml(
           }
           var cfi = location.start ? location.start.cfi : '';
           var total = totalPages || 1;
-          window.ReactNativeWebView.postMessage(JSON.stringify({
+          postToNative({
             type: 'locationChange', cfi: cfi, page: page, total: total
-          }));
+          });
         });
 
         rendition.on('click', function(e) {
           if (e && e.preventDefault) e.preventDefault();
           if (e && e.stopPropagation) e.stopPropagation();
+          if (zoomScale > 1.001) return;
 
           var width = window.innerWidth;
           var x = (e && typeof e.clientX === 'number') ? e.clientX : width / 2;
@@ -131,8 +274,15 @@ function generateHtml(
           } else if (x > width * 0.6) {
             rendition.next();
           } else {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tap' }));
+            postToNative({ type: 'tap' });
           }
+        });
+
+        window.addEventListener('resize', function() {
+          if (rendition) {
+            rendition.resize(window.innerWidth, window.innerHeight);
+          }
+          applyTransform(false);
         });
 
         window.addEventListener('message', function(e) {
@@ -144,14 +294,55 @@ function generateHtml(
               currentFontSize = msg.size;
               applyTheme();
             }
+            if (msg.type === 'zoomIn') setZoom(zoomScale + 0.4);
+            if (msg.type === 'zoomOut') setZoom(zoomScale - 0.4);
+            if (msg.type === 'resetZoom') setZoom(1);
+            if (msg.type === 'pan') panBy(msg.dx || 0, msg.dy || 0);
+            if (msg.type === 'extractText') {
+              if (!book || !book.spine || !book.spine.spineItems) {
+                postToNative({ type: 'textContent', text: '' });
+                return;
+              }
+              var allTexts = [];
+              var items = book.spine.spineItems;
+              var idx = 0;
+              function extractNext() {
+                if (idx >= items.length) {
+                  postToNative({ type: 'textContent', text: allTexts.join('\\n\\n') });
+                  return;
+                }
+                var item = items[idx];
+                idx++;
+                item.load(book.load.bind(book))
+                  .then(function(contents) {
+                    var txt = '';
+                    try {
+                      if (contents) {
+                        // epub.js 0.3.88 resolves with xml.documentElement (the <html> Element),
+                        // not a Document — so contents.body is undefined. Find the body child.
+                        var body = contents.body
+                          || (contents.querySelector && contents.querySelector('body'))
+                          || (contents.getElementsByTagName && contents.getElementsByTagName('body')[0]);
+                        var target = body || contents;
+                        txt = target.textContent || '';
+                      }
+                    } catch(ex) {}
+                    if (txt.trim()) allTexts.push(txt.trim());
+                    try { item.unload(); } catch(ex) {}
+                    extractNext();
+                  })
+                  .catch(function() { extractNext(); });
+              }
+              extractNext();
+            }
           } catch(err) {}
         });
       })
       .catch(function(err) {
         document.getElementById('status').textContent = 'Error: ' + (err.message || err);
-        window.ReactNativeWebView.postMessage(JSON.stringify({
+        postToNative({
           type: 'error', message: err.message || 'EPUB load error'
-        }));
+        });
       });
   </script>
 </body>
@@ -159,38 +350,62 @@ function generateHtml(
 }
 
 export const EpubReader = forwardRef<EpubReaderHandle, Props>(
-  ({ uri, lastCfi, fontSize, lineHeight, theme, onLocationChange, onTap }, ref) => {
+  ({ uri, lastCfi, fontSize, lineHeight, theme, onLocationChange, onTap, onZoomChange }, ref) => {
     const webViewRef = useRef<WebView>(null);
     const [htmlUri, setHtmlUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const prevFontSize = useRef(fontSize);
+    const textResolveRef = useRef<((text: string) => void) | null>(null);
+
+    const sendMessage = useCallback((message: object) => {
+      const payload = JSON.stringify(message);
+      webViewRef.current?.injectJavaScript(
+        `window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(payload)} })); true;`
+      );
+    }, []);
 
     useImperativeHandle(ref, () => ({
       nextPage: () => {
-        webViewRef.current?.injectJavaScript(
-          `window.dispatchEvent(new MessageEvent('message', { data: '{"type":"next"}' })); true;`
-        );
+        sendMessage({ type: 'next' });
       },
       prevPage: () => {
-        webViewRef.current?.injectJavaScript(
-          `window.dispatchEvent(new MessageEvent('message', { data: '{"type":"prev"}' })); true;`
-        );
+        sendMessage({ type: 'prev' });
       },
       setFontSize: (size: number) => {
-        webViewRef.current?.injectJavaScript(
-          `window.dispatchEvent(new MessageEvent('message', { data: '${JSON.stringify({ type: 'fontSize', size })}' })); true;`
-        );
+        sendMessage({ type: 'fontSize', size });
       },
-    }));
+      zoomIn: () => {
+        sendMessage({ type: 'zoomIn' });
+      },
+      zoomOut: () => {
+        sendMessage({ type: 'zoomOut' });
+      },
+      resetZoom: () => {
+        sendMessage({ type: 'resetZoom' });
+      },
+      panBy: (dx: number, dy: number) => {
+        sendMessage({ type: 'pan', dx, dy });
+      },
+      extractText: () => {
+        return new Promise<string>((resolve) => {
+          textResolveRef.current = resolve;
+          sendMessage({ type: 'extractText' });
+          setTimeout(() => {
+            if (textResolveRef.current === resolve) {
+              textResolveRef.current = null;
+              resolve('');
+            }
+          }, 60000);
+        });
+      },
+    }), [sendMessage]);
 
     useEffect(() => {
       if (prevFontSize.current !== fontSize) {
         prevFontSize.current = fontSize;
-        webViewRef.current?.injectJavaScript(
-          `window.dispatchEvent(new MessageEvent('message', { data: '${JSON.stringify({ type: 'fontSize', size: fontSize })}' })); true;`
-        );
+        sendMessage({ type: 'fontSize', size: fontSize });
       }
-    }, [fontSize]);
+    }, [fontSize, sendMessage]);
 
     useEffect(() => {
       (async () => {
@@ -213,6 +428,13 @@ export const EpubReader = forwardRef<EpubReaderHandle, Props>(
           onLocationChange(msg.cfi, msg.page, msg.total);
         } else if (msg.type === 'tap') {
           onTap();
+        } else if (msg.type === 'zoomChange') {
+          onZoomChange(msg.zoomed);
+        } else if (msg.type === 'textContent') {
+          if (textResolveRef.current) {
+            textResolveRef.current(msg.text || '');
+            textResolveRef.current = null;
+          }
         } else if (msg.type === 'error') {
           console.error('[EPUB Error]', msg.message);
         }

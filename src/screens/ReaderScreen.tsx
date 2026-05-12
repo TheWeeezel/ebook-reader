@@ -18,6 +18,7 @@ import { useAppStore } from '../store/appStore';
 import { EpubReader, EpubReaderHandle } from '../components/EpubReader';
 import { PdfReader, PdfReaderHandle } from '../components/PdfReader';
 import { Notepad } from '../components/Notepad';
+import { AiPromptModal } from '../components/AiPromptModal';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { colors, READER_THEMES } from '../theme';
 
@@ -28,12 +29,15 @@ export function ReaderScreen() {
   const settings = useAppStore((s) => s.settings);
   const updateBookProgress = useAppStore((s) => s.updateBookProgress);
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const addNote = useAppStore((s) => s.addNote);
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [notepadVisible, setNotepadVisible] = useState(false);
+  const [aiModalVisible, setAiModalVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(currentBook?.lastPage || 0);
   const [totalPages, setTotalPages] = useState(currentBook?.totalPages || 0);
   const [currentCfi, setCurrentCfi] = useState(currentBook?.lastCfi);
+  const [isZoomed, setIsZoomed] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const epubRef = useRef<EpubReaderHandle>(null);
@@ -47,6 +51,22 @@ export function ReaderScreen() {
       deactivateKeepAwake();
     };
   }, [settings.keepScreenAwake]);
+
+  useEffect(() => {
+    setIsZoomed(false);
+  }, [currentBook?.id]);
+
+  const hideMenu = useCallback(() => {
+    setMenuVisible((prev) => {
+      if (!prev) return prev;
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      return false;
+    });
+  }, [fadeAnim]);
 
   const toggleMenu = useCallback(() => {
     setMenuVisible((prev) => {
@@ -81,12 +101,99 @@ export function ReaderScreen() {
     setNotepadVisible(true);
   }, []);
 
+  const openAi = useCallback(() => {
+    setAiModalVisible(true);
+  }, []);
+
+  const handleExtractText = useCallback(async (): Promise<string> => {
+    if (!currentBook) return '';
+    if (currentBook.type === 'epub') {
+      return epubRef.current?.extractText() ?? '';
+    }
+    if (currentBook.type === 'pdf') {
+      return pdfRef.current?.extractText() ?? '';
+    }
+    if (currentBook.type === 'txt') {
+      try {
+        return await FileSystem.readAsStringAsync(currentBook.uri);
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  }, [currentBook]);
+
+  const handleAiSaveAsNote = useCallback(
+    async (text: string) => {
+      if (!currentBook) return;
+      await addNote({
+        bookId: currentBook.id,
+        text,
+        page: currentPage,
+        cfi: currentCfi,
+      });
+    },
+    [currentBook, currentPage, currentCfi, addNote]
+  );
+
+  const canZoom = currentBook?.type === 'epub' || currentBook?.type === 'pdf';
+
+  const handleZoomChange = useCallback(
+    (zoomed: boolean) => {
+      setIsZoomed(zoomed);
+      if (zoomed) {
+        hideMenu();
+      }
+    },
+    [hideMenu]
+  );
+
+  const handleZoomIn = useCallback(() => {
+    hideMenu();
+    if (!currentBook) return;
+    if (currentBook.type === 'epub') {
+      epubRef.current?.zoomIn();
+    } else if (currentBook.type === 'pdf') {
+      pdfRef.current?.zoomIn();
+    }
+  }, [currentBook, hideMenu]);
+
+  const handleZoomOut = useCallback(() => {
+    if (!currentBook) return;
+    if (currentBook.type === 'epub') {
+      epubRef.current?.zoomOut();
+    } else if (currentBook.type === 'pdf') {
+      pdfRef.current?.zoomOut();
+    }
+  }, [currentBook]);
+
+  const handleResetZoom = useCallback(() => {
+    if (!currentBook) return;
+    if (currentBook.type === 'epub') {
+      epubRef.current?.resetZoom();
+    } else if (currentBook.type === 'pdf') {
+      pdfRef.current?.resetZoom();
+    }
+  }, [currentBook]);
+
+  const handlePan = useCallback(
+    (dx: number, dy: number) => {
+      if (!currentBook) return;
+      if (currentBook.type === 'epub') {
+        epubRef.current?.panBy(dx, dy);
+      } else if (currentBook.type === 'pdf') {
+        pdfRef.current?.panBy(dx, dy);
+      }
+    },
+    [currentBook]
+  );
+
   const { inputRef, handleKeyPress, handleRefocus } = useKeyboardControls({
     onNextPage: goNext,
     onPrevPage: goPrev,
     onOpenNotes: openNotes,
     onToggleMenu: toggleMenu,
-    enabled: !notepadVisible,
+    enabled: !notepadVisible && !aiModalVisible && !isZoomed,
   });
 
   const handleFontSizeChange = (delta: number) => {
@@ -99,7 +206,7 @@ export function ReaderScreen() {
 
   const progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
   const readerTheme = READER_THEMES[settings.theme];
-  const shouldShowTapZones = !menuVisible && !notepadVisible;
+  const shouldShowTapZones = !menuVisible && !notepadVisible && !isZoomed;
 
   if (!currentBook) {
     return (
@@ -119,7 +226,7 @@ export function ReaderScreen() {
       <StatusBar hidden />
 
       {/* Hidden TextInput for keyboard capture */}
-      {!notepadVisible && (
+      {!notepadVisible && !aiModalVisible && (
         <TextInput
           ref={inputRef}
           style={styles.hiddenInput}
@@ -145,6 +252,7 @@ export function ReaderScreen() {
             updateBookProgress(currentBook.id, page, undefined, total);
           }}
           onTap={toggleMenu}
+          onZoomChange={handleZoomChange}
         />
       )}
 
@@ -164,6 +272,7 @@ export function ReaderScreen() {
             updateBookProgress(currentBook.id, page, cfi, total);
           }}
           onTap={toggleMenu}
+          onZoomChange={handleZoomChange}
         />
       )}
 
@@ -188,6 +297,59 @@ export function ReaderScreen() {
           <TouchableOpacity style={[styles.tapZone, styles.tapZoneLeft]} onPress={goPrev} activeOpacity={1} />
           <TouchableOpacity style={[styles.tapZone, styles.tapZoneCenter]} onPress={toggleMenu} activeOpacity={1} />
           <TouchableOpacity style={[styles.tapZone, styles.tapZoneRight]} onPress={goNext} activeOpacity={1} />
+        </View>
+      )}
+
+      {isZoomed && (
+        <View
+          style={[
+            styles.zoomControls,
+            {
+              right: 16,
+              bottom: Math.max(insets.bottom, 12) + 16,
+            },
+          ]}
+          pointerEvents="box-none"
+        >
+          <View style={styles.zoomRail}>
+            <TouchableOpacity onPress={handleZoomIn} style={styles.zoomBtn}>
+              <Ionicons name="add" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleZoomOut} style={styles.zoomBtn}>
+              <Ionicons name="remove" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleResetZoom} style={styles.zoomBtn}>
+              <Ionicons name="contract-outline" size={18} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.panPad}>
+            <View style={styles.panRow}>
+              <View style={styles.panSpacer} />
+              <TouchableOpacity onPress={() => handlePan(0, 96)} style={styles.zoomBtn}>
+                <Ionicons name="chevron-up" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <View style={styles.panSpacer} />
+            </View>
+
+            <View style={styles.panRow}>
+              <TouchableOpacity onPress={() => handlePan(96, 0)} style={styles.zoomBtn}>
+                <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <View style={styles.panCenter} />
+              <TouchableOpacity onPress={() => handlePan(-96, 0)} style={styles.zoomBtn}>
+                <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.panRow}>
+              <View style={styles.panSpacer} />
+              <TouchableOpacity onPress={() => handlePan(0, -96)} style={styles.zoomBtn}>
+                <Ionicons name="chevron-down" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <View style={styles.panSpacer} />
+            </View>
+          </View>
         </View>
       )}
 
@@ -237,6 +399,16 @@ export function ReaderScreen() {
               <Ionicons name="document-text-outline" size={20} color={colors.textPrimary} />
             </TouchableOpacity>
 
+            <TouchableOpacity onPress={openAi} style={styles.actionBtn}>
+              <Ionicons name="sparkles-outline" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+
+            {canZoom && (
+              <TouchableOpacity onPress={handleZoomIn} style={styles.actionBtn}>
+                <Ionicons name="search-outline" size={18} color={colors.textPrimary} />
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity onPress={goNext} style={styles.actionBtn}>
               <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
             </TouchableOpacity>
@@ -252,6 +424,15 @@ export function ReaderScreen() {
         bookTitle={currentBook.title}
         currentPage={currentPage}
         currentCfi={currentCfi}
+      />
+
+      {/* AI Assistant Modal */}
+      <AiPromptModal
+        visible={aiModalVisible}
+        onClose={() => setAiModalVisible(false)}
+        onSaveAsNote={handleAiSaveAsNote}
+        onExtractText={handleExtractText}
+        bookTitle={currentBook.title}
       />
     </View>
   );
@@ -334,6 +515,42 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
     zIndex: 10,
+  },
+  zoomControls: {
+    position: 'absolute',
+    zIndex: 15,
+    alignItems: 'flex-end',
+    gap: 10,
+  },
+  zoomRail: {
+    gap: 8,
+    alignItems: 'center',
+  },
+  zoomBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.overlayBar,
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  panPad: {
+    gap: 8,
+  },
+  panRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  panSpacer: {
+    width: 48,
+    height: 48,
+  },
+  panCenter: {
+    width: 48,
+    height: 48,
   },
   topBar: {
     flexDirection: 'row',

@@ -17,6 +17,7 @@ import * as FileSystem from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore, Book, BookType } from '../store/appStore';
 import { colors } from '../theme';
+import { ConvertPdfModal } from '../components/ConvertPdfModal';
 
 const BOOKS_DIR = FileSystem.documentDirectory + 'books/';
 const UNGROUPED_GROUP_ID = '__ungrouped__';
@@ -70,6 +71,7 @@ export function LibraryScreen() {
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
 
   const [menuBook, setMenuBook] = useState<Book | null>(null);
+  const [convertingBook, setConvertingBook] = useState<Book | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [createGroupVisible, setCreateGroupVisible] = useState(false);
@@ -500,6 +502,20 @@ export function LibraryScreen() {
               <Text style={styles.menuItemText}>Notizen ({menuBook ? getNotesCount(menuBook.id) : 0})</Text>
             </TouchableOpacity>
 
+            {menuBook?.type === 'pdf' && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  const target = menuBook;
+                  setMenuBook(null);
+                  setConvertingBook(target);
+                }}
+              >
+                <Ionicons name="swap-horizontal-outline" size={20} color={colors.textPrimary} />
+                <Text style={styles.menuItemText}>Zu EPUB konvertieren</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={[styles.menuItem, styles.menuItemDanger]}
               onPress={() => menuBook && handleRemoveBook(menuBook)}
@@ -551,6 +567,22 @@ export function LibraryScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <ConvertPdfModal
+        visible={!!convertingBook}
+        book={convertingBook}
+        onClose={() => setConvertingBook(null)}
+        onDone={async ({ uri, title }) => {
+          await addBook({
+            title,
+            uri,
+            type: 'epub',
+            groupId: convertingBook?.groupId ?? null,
+            lastPage: 0,
+            totalPages: 0,
+          });
+        }}
+      />
 
       <Modal
         visible={createGroupVisible}

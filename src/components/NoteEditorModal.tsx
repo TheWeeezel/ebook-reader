@@ -7,9 +7,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Clipboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 
@@ -51,8 +51,8 @@ export function NoteEditorModal({
     onClose();
   };
 
-  const handleCopy = () => {
-    Clipboard.setString(text);
+  const handleCopy = async () => {
+    await Clipboard.setStringAsync(text);
     Alert.alert('Kopiert', 'Notiz wurde in die Zwischenablage kopiert.');
   };
 
@@ -88,7 +88,7 @@ export function NoteEditorModal({
           />
         </View>
 
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 8) }]}>
           <TouchableOpacity style={styles.secondaryBtn} onPress={handleCopy} activeOpacity={0.8}>
             <Ionicons name="copy-outline" size={18} color={colors.textPrimary} />
             <Text style={styles.secondaryBtnText}>Kopieren</Text>
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: colors.textPrimary,
     paddingHorizontal: 14,
-    paddingTop: 10,
+    paddingTop: 8,
     flexDirection: 'row',
     gap: 8,
   },
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    height: 46,
+    height: 42,
     borderRadius: 8,
     borderWidth: 2,
     borderColor: colors.textPrimary,
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   },
   primaryBtn: {
     flex: 1,
-    height: 46,
+    height: 42,
     borderRadius: 8,
     borderWidth: 2,
     borderColor: colors.textPrimary,

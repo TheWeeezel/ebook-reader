@@ -24,7 +24,11 @@ export function useKeyboardControls({
     (key: string) => {
       if (!enabled) return;
 
-      const binding = settings.keyBindings.find((b) => b.key === key);
+      const binding = settings.keyBindings.find((b) =>
+        settings.caseInsensitiveKeys
+          ? b.key.toLowerCase() === key.toLowerCase()
+          : b.key === key
+      );
       if (!binding || binding.action === 'none') return;
 
       switch (binding.action) {
@@ -42,7 +46,7 @@ export function useKeyboardControls({
           break;
       }
     },
-    [enabled, settings.keyBindings, onNextPage, onPrevPage, onOpenNotes, onToggleMenu]
+    [enabled, settings.keyBindings, settings.caseInsensitiveKeys, onNextPage, onPrevPage, onOpenNotes, onToggleMenu]
   );
 
   const handleRefocus = useCallback(() => {

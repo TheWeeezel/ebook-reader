@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "PageTurner",
-    "slug": "page-turner",
+    "name": "SmartReader",
+    "slug": "smartreader",
     "version": "1.0.0",
-    "scheme": "pageturner",
+    "scheme": "smartreader",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
@@ -11,8 +11,9 @@
       "backgroundColor": "#ffffff"
     },
     "android": {
-      "package": "com.pageturner.app",
+      "package": "com.smartreader.app",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [

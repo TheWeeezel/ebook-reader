@@ -44,6 +44,7 @@ export interface Settings {
   lineHeight: number;
   keyBindings: KeyBinding[];
   keepScreenAwake: boolean;
+  caseInsensitiveKeys: boolean;
 }
 
 // ACCENT_COLORS imported from theme.ts
@@ -62,6 +63,7 @@ const DEFAULT_SETTINGS: Settings = {
   lineHeight: 1.7,
   keyBindings: DEFAULT_KEY_BINDINGS,
   keepScreenAwake: true,
+  caseInsensitiveKeys: true,
 };
 
 const sanitizeBookTitle = (rawTitle: string): string => {
@@ -159,9 +161,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         : [];
       const groups = groupsStr ? JSON.parse(groupsStr) : [];
       const notes = notesStr ? JSON.parse(notesStr) : {};
-      const settings = settingsStr
-        ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsStr) }
-        : DEFAULT_SETTINGS;
+      const parsed = settingsStr ? JSON.parse(settingsStr) : {};
+      // Strip the legacy on-device anthropicApiKey if it lingered in old
+      // AsyncStorage state; the key now lives in Secret Manager server-side.
+      if (parsed.anthropicApiKey) {
+        delete parsed.anthropicApiKey;
+        await AsyncStorage.setItem('settings', JSON.stringify(parsed));
+      }
+      const settings = { ...DEFAULT_SETTINGS, ...parsed };
       set({ books, groups, notes, settings, initialized: true });
     } catch {
       set({ initialized: true });

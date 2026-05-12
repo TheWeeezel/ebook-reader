@@ -135,6 +135,19 @@ export function SettingsScreen() {
           Tippe auf eine Taste um sie zu ändern. Ideal für das physische Keyboard des Minimal Phone.
         </Text>
         <View style={styles.card}>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Groß-/Kleinschreibung ignorieren</Text>
+              <Text style={styles.hint}>Taste reagiert unabhängig von Groß- oder Kleinbuchstaben</Text>
+            </View>
+            <Switch
+              value={settings.caseInsensitiveKeys}
+              onValueChange={(val) => updateSettings({ caseInsensitiveKeys: val })}
+              trackColor={{ false: colors.switchTrackOff, true: colors.switchTrackOn }}
+              thumbColor={colors.switchThumb}
+            />
+          </View>
+          <View style={styles.separator} />
           {settings.keyBindings.map((binding, index) => (
             <View key={index}>
               {index > 0 && <View style={styles.separator} />}
@@ -257,7 +270,17 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   label: { fontSize: 14, fontWeight: '600', color: colors.textPrimary, marginBottom: 8 },
-  hint: { fontSize: 12, color: colors.textDim, marginTop: -4 },
+  hint: { fontSize: 12, color: colors.textDim, marginTop: 4 },
+  apiKeyInput: {
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.textPrimary,
+    backgroundColor: colors.bg,
+  },
   separator: { height: 1, backgroundColor: colors.border, marginVertical: 14 },
 
   themeRow: { flexDirection: 'row', gap: 8 },
